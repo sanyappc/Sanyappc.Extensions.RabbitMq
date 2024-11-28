@@ -1,0 +1,1 @@
+# Sanyappc.Extensions.RabbitMq
