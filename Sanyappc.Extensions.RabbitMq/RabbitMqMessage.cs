@@ -35,18 +35,30 @@ namespace Sanyappc.Extensions.RabbitMq
             }
         }
 
-        public async ValueTask AckAsync<TOut>(TOut? replyMessage = default, CancellationToken cancellationToken = default)
+        public async ValueTask AckAsync(CancellationToken cancellationToken = default)
         {
             await channel.BasicAckAsync(deliveryTag, false, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async ValueTask AckAsync<TOut>(TOut? replyMessage, CancellationToken cancellationToken = default)
+        {
+            await AckAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             await ReplyIfNeededAsync(replyMessage, cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        public async ValueTask RejectAsync<TOut>(TOut? replyMessage = default, CancellationToken cancellationToken = default)
+        public async ValueTask RejectAsync(CancellationToken cancellationToken = default)
         {
             await channel.BasicRejectAsync(deliveryTag, false, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async ValueTask RejectAsync<TOut>(TOut? replyMessage, CancellationToken cancellationToken = default)
+        {
+            await RejectAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             await ReplyIfNeededAsync(replyMessage, cancellationToken)
