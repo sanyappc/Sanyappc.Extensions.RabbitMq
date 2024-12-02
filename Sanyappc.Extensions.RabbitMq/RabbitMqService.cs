@@ -11,7 +11,7 @@ using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal class RabbitMqService(ILogger<RabbitMqService> logger, IOptions<RabbitMqOptions> options) : IRabbitMqService, IAsyncDisposable
+    internal partial class RabbitMqService(ILogger<RabbitMqService> logger, IOptions<RabbitMqOptions> options) : IRabbitMqService, IAsyncDisposable
     {
         private readonly ILogger<RabbitMqService> logger = logger;
         private readonly ConnectionFactory connectionFactory = new()
@@ -70,7 +70,7 @@ namespace Sanyappc.Extensions.RabbitMq
             return channel;
         }
 
-        private async ValueTask<IChannel> CreateQueueAsync(IChannel channel, string queue, CancellationToken cancellationToken = default)
+        private static async ValueTask<IChannel> CreateQueueAsync(IChannel channel, string queue, CancellationToken cancellationToken = default)
         {
             await channel.QueueDeclareAsync(queue, false, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
@@ -107,7 +107,7 @@ namespace Sanyappc.Extensions.RabbitMq
             using IChannel channel = await CreateChannel(cancellationToken)
                 .ConfigureAwait(false);
 
-            QueueDeclareOk replyQueue = await channel.QueueDeclareAsync()
+            QueueDeclareOk replyQueue = await channel.QueueDeclareAsync(cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             string correlationID = $"{Guid.NewGuid()}";
@@ -221,24 +221,6 @@ namespace Sanyappc.Extensions.RabbitMq
             }
 
             GC.SuppressFinalize(this);
-        }
-
-        private record ResultOrException<T>
-        {
-            private readonly T? result;
-            private readonly Exception? exception;
-
-            public ResultOrException(T result)
-            {
-                this.result = result;
-            }
-
-            public ResultOrException(Exception exception)
-            {
-                this.exception = exception;
-            }
-
-            public T Result => result ?? throw (exception ?? new InvalidOperationException());
         }
     }
 }
