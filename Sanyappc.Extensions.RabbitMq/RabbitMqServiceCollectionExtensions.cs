@@ -15,7 +15,10 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
-            services.TryAddSingleton<IRabbitMqService, RabbitMqService>();
+            services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
+
+            services.TryAddTransient<IRabbitMqConsumeService, RabbitMqConsumeService>();
+            services.TryAddTransient<IRabbitMqPublishService, RabbitMqPublishService>();
 
             return services;
         }
