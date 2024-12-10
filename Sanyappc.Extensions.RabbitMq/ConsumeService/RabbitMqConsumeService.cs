@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Diagnostics;
+
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using RabbitMQ.Client;
@@ -22,18 +24,18 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ConfigureAwait(false);
 
             AsyncEventingBasicConsumer consumer = new(channel);
-
             consumer.ReceivedAsync += async (object sender, BasicDeliverEventArgs @event) =>
             {
-                AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
+                using Activity activity = @event.BasicProperties.StartActivity();
+                using IDisposable? loggerScope = logger.BeginScope(
+                    "MessageId: {messageId}", @event.BasicProperties.MessageId ?? $"{@event.DeliveryTag}");
 
+                AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
                 await using (serviceScope.ConfigureAwait(false))
                 {
                     T scopedMessageProcessingService = serviceScope.ServiceProvider.GetRequiredService<T>();
 
-                    RabbitMqMessage message = new(channel, @event);
-
-                    await scopedMessageProcessingService.ProcessMessageAsync(message, cancellationToken)
+                    await scopedMessageProcessingService.ProcessMessageAsync(new RabbitMqMessage(channel, @event), cancellationToken)
                         .ConfigureAwait(false);
                 }
             };

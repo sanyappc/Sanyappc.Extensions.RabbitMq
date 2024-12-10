@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Diagnostics;
+using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
 
@@ -20,8 +21,11 @@ namespace Sanyappc.Extensions.RabbitMq
             await channel.QueueDeclareAsync(queue, false, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            await channel.BasicPublishAsync(string.Empty, queue, body, cancellationToken)
-              .ConfigureAwait(false);
+            BasicProperties properties = new();
+            properties.Inject(Activity.Current);
+
+            await channel.BasicPublishAsync(string.Empty, queue, false, properties, body, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         public async ValueTask PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
@@ -32,13 +36,10 @@ namespace Sanyappc.Extensions.RabbitMq
 
         public async ValueTask<TOut> PublishAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
+            const string replyTo = "amq.rabbitmq.reply-to";
+
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
                 .ConfigureAwait(false);
-
-            QueueDeclareOk replyQueue = await channel.QueueDeclareAsync(cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            string correlationID = $"{Guid.NewGuid()}";
 
             using SemaphoreSlim semaphoreSlim = new(0, 1);
 
@@ -51,38 +52,30 @@ namespace Sanyappc.Extensions.RabbitMq
                 if (semaphoreSlim.CurrentCount != 0)
                     return;
 
+                await Task.CompletedTask
+                    .ConfigureAwait(false);
+
                 try
                 {
-                    if (@event.BasicProperties.CorrelationId != correlationID)
-                        throw new InvalidOperationException();
-
                     replyBody = RabbitMqMessage.DeserializeBody<TOut>(@event.Body.Span, options);
-
-                    await channel.BasicAckAsync(@event.DeliveryTag, false, cancellationToken)
-                       .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     replyException = ex;
-
-                    await channel.BasicRejectAsync(@event.DeliveryTag, false, cancellationToken)
-                        .ConfigureAwait(false);
                 }
 
                 semaphoreSlim.Release();
             };
 
-            await channel.BasicConsumeAsync(replyQueue.QueueName, false, consumer, cancellationToken)
+            await channel.BasicConsumeAsync(replyTo, true, consumer, cancellationToken)
                 .ConfigureAwait(false);
 
             await channel.QueueDeclareAsync(queue, false, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            BasicProperties properties = new()
-            {
-                ReplyTo = replyQueue.QueueName,
-                CorrelationId = correlationID
-            };
+            BasicProperties properties = new();
+            properties.Inject(Activity.Current);
+            properties.ReplyTo = replyTo;
 
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
                 .ConfigureAwait(false);
