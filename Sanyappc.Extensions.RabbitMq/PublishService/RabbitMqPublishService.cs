@@ -18,7 +18,7 @@ namespace Sanyappc.Extensions.RabbitMq
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            await channel.QueueDeclareAsync(queue, false, false, false, cancellationToken: cancellationToken)
+            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             BasicProperties properties = new();
@@ -70,7 +70,7 @@ namespace Sanyappc.Extensions.RabbitMq
             await channel.BasicConsumeAsync(replyTo, true, consumer, cancellationToken)
                 .ConfigureAwait(false);
 
-            await channel.QueueDeclareAsync(queue, false, false, false, cancellationToken: cancellationToken)
+            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             BasicProperties properties = new();
