@@ -2,7 +2,7 @@
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal interface IRabbitMqChannelFactory
+    public interface IRabbitMqChannelFactory
     {
         ValueTask<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default);
     }

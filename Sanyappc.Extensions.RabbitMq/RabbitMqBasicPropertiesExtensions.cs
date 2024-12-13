@@ -32,7 +32,7 @@ namespace Sanyappc.Extensions.RabbitMq
             {
                 values = null;
 
-                IBasicProperties basicProperties = carrier as IBasicProperties ?? throw new InvalidOperationException();
+                IReadOnlyBasicProperties basicProperties = carrier as IReadOnlyBasicProperties ?? throw new InvalidOperationException();
                 if (basicProperties.Headers is not null && basicProperties.Headers.TryGetValue(name, out object? objectValue))
                     value = $"{objectValue}";
                 else
