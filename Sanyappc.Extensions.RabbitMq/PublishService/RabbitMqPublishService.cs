@@ -13,9 +13,11 @@ namespace Sanyappc.Extensions.RabbitMq
         private readonly ILogger<RabbitMqPublishService> logger = logger;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
 
-        public async ValueTask PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        public async ValueTask PublishAsync(string connectionName, string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
-            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
+            logger.LogInformation("connectionName={}", connectionName);
+
+            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, cancellationToken)
                 .ConfigureAwait(false);
 
             await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
@@ -28,17 +30,17 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ConfigureAwait(false);
         }
 
-        public async ValueTask PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async ValueTask PublishAsync<T>(string connectionName, string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
-            await PublishAsync(queue, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
+            await PublishAsync(connectionName, queue, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
               .ConfigureAwait(false);
         }
 
-        public async ValueTask<TOut> PublishAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async ValueTask<TOut> PublishAsync<TIn, TOut>(string connectionName, string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             const string replyTo = "amq.rabbitmq.reply-to";
 
-            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
+            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, cancellationToken)
                 .ConfigureAwait(false);
 
             using SemaphoreSlim semaphoreSlim = new(0, 1);

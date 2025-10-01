@@ -2,21 +2,12 @@
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal record RabbitMqOptions
+    public record RabbitMqOptions
     {
         [Required]
-        [MinLength(1)]
-        public required string RabbitMqHostname { get; init; }
-
-        [Range(-1, 65536)]
-        public int RabbitMqPort { get; init; } = -1;
+        public Dictionary<string, RabbitMqConnectionSettings> Connections { get; set; } = new();
 
         [Required]
-        [MinLength(1)]
-        public required string RabbitMqUsername { get; init; }
-
-        [Required]
-        [MinLength(1)]
-        public required string RabbitMqPassword { get; init; }
+        public Dictionary<string, RabbitMqConsumerOptions> Consumers { get; set; } = new();
     }
 }

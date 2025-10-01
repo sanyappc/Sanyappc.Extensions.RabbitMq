@@ -2,7 +2,7 @@
 {
     public interface IRabbitMqConsumeService
     {
-        ValueTask ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
+        ValueTask ConsumeAsync<T>(CancellationToken cancellationToken = default)
             where T : IRabbitMqMessageProcessingService;
     }
 }
