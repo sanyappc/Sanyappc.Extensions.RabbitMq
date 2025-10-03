@@ -2,25 +2,26 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Sanyappc.Extensions.RabbitMq.ConsumeFactory;
+
 namespace Sanyappc.Extensions.RabbitMq
 {
-    // Здесь (и везде) лучше инъектить IServiceProvider или IServiceScopeFactory?
     internal class ConsumerFactory(
         IServiceProvider serviceProvider,
         IOptions<RabbitMqOptions> options) : IConsumerFactory
     {
         protected readonly IServiceProvider serviceProvider = serviceProvider;
 
-        public TConsumer Build<TConsumer>(string consumerName) where TConsumer : IRabbitConsumer
+        public async Task<RabbitMqConsumer> BuildAsync(string consumerName, CancellationToken cancellationToken)
         {
             if (!options.Value.Consumers.TryGetValue(consumerName, out RabbitMqConsumerOptions? consumerOptions))
-                throw new KeyNotFoundException($"No Consumer config named '{consumerName}'");
+                throw new KeyNotFoundException($"No Consumer config named \"{consumerName}\"");
 
             ILoggerFactory loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-            ILogger<TConsumer> logger = loggerFactory.CreateLogger<TConsumer>();
-            IRabbitMqChannelFactory chfactory = serviceProvider.GetRequiredService<IRabbitMqChannelFactory>();
+            ILogger<RabbitMqConsumer> logger = loggerFactory.CreateLogger<RabbitMqConsumer>();
+            IRabbitMqChannelFactory rabbitMqChannelFactory = serviceProvider.GetRequiredService<IRabbitMqChannelFactory>();
 
-            return (TConsumer)Activator.CreateInstance(typeof(TConsumer), logger, chfactory, serviceProvider, consumerOptions.ConnectionName, consumerOptions.QueueName)!;
+            return new RabbitMqConsumer(logger, serviceProvider, rabbitMqChannelFactory, consumerOptions);
         }
     }
 }

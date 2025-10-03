@@ -1,54 +1,65 @@
 ﻿using System.Diagnostics;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq.ConsumeFactory
 {
-    public class RabbitConsumer(
-        ILogger<RabbitConsumer> logger,
+    public class RabbitMqConsumer(
+        ILogger<RabbitMqConsumer> logger,
+        IServiceProvider serviceProvider,
         IRabbitMqChannelFactory rabbitMqChannelFactory,
-        IServiceScopeFactory serviceScopeFactory,
-        string connectionName,
-        string queue) : IRabbitConsumer
+        RabbitMqConsumerOptions options) : IRabbitConsumer
     {
-        private readonly ILogger<RabbitConsumer> logger = logger;
+        private readonly ILogger<RabbitMqConsumer> logger = logger;
+        private readonly IServiceProvider serviceProvider = serviceProvider;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
-        protected readonly IServiceScopeFactory serviceScopeFactory = serviceScopeFactory;
-        protected readonly string queue = queue;
-        protected readonly string connectionName = connectionName;
+
+        private readonly string name = options.Name;
+        private readonly string connectionName = options.ConnectionName;
+        private readonly string queueName = options.QueueName;
 
         public async Task ExecuteAsync<TService>(CancellationToken stoppingToken = default) where TService : IRabbitMqMessageProcessingService
         {
-            logger.LogInformation("Rabbit Consumer executing with connectionName={}, queueName={}", connectionName, queue);
+            logger.LogInformation("Executing Rabbit Consumer \"{}\" with queueName \"{}\"", name, queueName);
 
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, stoppingToken)
                 .ConfigureAwait(false);
 
-            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: stoppingToken)
+            await channel.QueueDeclareAsync(queueName, true, false, false, cancellationToken: stoppingToken)
                 .ConfigureAwait(false);
 
             AsyncEventingBasicConsumer consumer = new(channel);
-            consumer.ReceivedAsync += async (object sender, BasicDeliverEventArgs @event) =>
+            consumer.ReceivedAsync += async (sender, @event) =>
             {
-                using Activity activity = @event.BasicProperties.StartActivity();
-
-                AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
-                await using (serviceScope.ConfigureAwait(false))
-                {
-                    TService scopedMessageProcessingService = serviceScope.ServiceProvider.GetRequiredService<TService>();
-
-                    await scopedMessageProcessingService.ProcessMessageAsync(new RabbitMqMessage(channel, @event), stoppingToken)
-                        .ConfigureAwait(false);
-                }
+                await ProcessMessageAsync<TService>(@event, channel, stoppingToken);
             };
 
-            await channel.BasicConsumeAsync(queue, false, consumer, stoppingToken)
+            await channel.BasicConsumeAsync(queueName, false, consumer, stoppingToken)
                 .ConfigureAwait(false);
 
             await Task.Delay(Timeout.Infinite, stoppingToken)
                 .ConfigureAwait(false);
+        }
+
+        private async Task ProcessMessageAsync<TService>(BasicDeliverEventArgs @event, IChannel channel, CancellationToken cancellationToken)
+        where TService : IRabbitMqMessageProcessingService
+        {
+            using Activity activity = @event.BasicProperties.StartActivity();
+
+            var serviceScopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+            using AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
+
+            await using (serviceScope.ConfigureAwait(false))
+            {
+                TService scopedMessageProcessingService = serviceScope.ServiceProvider.GetRequiredService<TService>();
+
+                await scopedMessageProcessingService.ProcessMessageAsync(new RabbitMqMessage(channel, @event), cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 }

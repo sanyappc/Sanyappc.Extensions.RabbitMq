@@ -1,9 +1,7 @@
 # Sanyappc.Extensions.RabbitMq
-
 ## 1. Configuration setup
-
 ### appsettings.json
-Declare your named connections under `RabbitMq.Connections` and consumers, if needed any, under `RabbitMq.Consumers`:
+Declare named connections under `RabbitMq.Connections`, publishers and consumers under `RabbitMq.Consumers` and `RabbitMq.Publishers`:
 
 ```json
 "RabbitMq": {
@@ -32,28 +30,48 @@ Declare your named connections under `RabbitMq.Connections` and consumers, if ne
       "QueueName": "amadesci-registration-confirmation-put",
       "ConnectionName": "Registrations"
     }
+  },
+  "Publishers": {
+    "GmailMessageSend": {
+      "Name": "GmailMessageSend",
+      "ConnectionName": "Tasks",
+      "QueueName": "amadesci-gmail-message-send"
+    },
+    "RegistrationNotify": {
+      "Name": "RegistrationNotify",
+      "ConnectionName": "Registrations",
+      "QueueName": "amadesci-registration-confirmation-put"
+    }
   }
 },
 ```
+Consumers' and publishers' ConnectionName must correlate with connections names.
 
-## 2. Usage (consumers via factory)
-### Consumers creation
+### env
 ```csharp
-internal class RabbitMqRegistrationsConsumerService : RabbitConsumer
-{
-    public RabbitMqRegistrationsConsumerService(
-        ILogger<RabbitMqRegistrationsConsumerService> logger,
-        IRabbitMqChannelFactory rabbitMqChannelFactory,
-        IServiceScopeFactory serviceScopeFactory,
-        string connectionName,
-        string queue) : base(logger, rabbitMqChannelFactory, serviceScopeFactory, connectionName, queue)
-    {
+DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQHOSTNAME = "localhost"
+DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQPORT     = "5672"
+DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQUSERNAME = "admin1"
+DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQPASSWORD = "qwerty1"
 
-    }
-}
+DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQHOSTNAME = "localhost"
+DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQPORT     = "5673"
+DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQUSERNAME = "admin2"
+DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQPASSWORD = "qwerty2"
+
+DA__RABBITMQ__CONSUMERS__GMAILMESSAGES__NAME           = "GmailMessages"
+DA__RABBITMQ__CONSUMERS__GMAILMESSAGES__QUEUENAME      = "amadesci-gmail-message-send"
+DA__RABBITMQ__CONSUMERS__GMAILMESSAGES__CONNECTIONNAME = "Tasks"
+
+DA__RABBITMQ__PUBLISHERS__GMAILMESSAGESEND__NAME           = "GmailMessageSend"
+DA__RABBITMQ__PUBLISHERS__GMAILMESSAGESEND__QUEUENAME      = "amadesci-gmail-message-send"
+DA__RABBITMQ__PUBLISHERS__GMAILMESSAGESEND__CONNECTIONNAME = "Tasks"
+
+builder.Configuration.AddEnvironmentVariables("DA_");
 ```
 
-### Service Registration
+## 2. Usage (consumers)
+### Core RabbutMq services Registration
 ```csharp
 // Register core rabbit client infrastructure
 builder.Services.AddNamedRabbitMqService(builder.Configuration, "RabbitMq");
@@ -63,38 +81,39 @@ builder.Services.AddSingleton<IRabbitMqMessageProcessingService, RabbitMqMessage
 
 ```
 
-### Instantiate consumers via injected factory for usage
+### Consumers via injected factory
 ```csharp
-public class AppWorker(IConsumerFactory consumerFactory) : BackgroundService
+public class Worker(IConsumerFactory consumerFactory) : BackgroundService
 {
     private readonly IConsumerFactory consumerFactory = consumerFactory;
 
-    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    private IRabbitConsumer rabbitMqTasksConsumerService = null!;
+    private IRabbitConsumer rabbitMqRegistrationsConsumerService = null!;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                RabbitMqTasksConsumerService         rabbitMqTasksConsumerService         = consumerFactory.Build<RabbitMqTasksConsumerService>("GmailMessages");
-                RabbitMqRegistrationsConsumerService rabbitMqRegistrationsConsumerService = consumerFactory.Build<RabbitMqRegistrationsConsumerService>("RegistrationNotify");
+        if (rabbitMqTasksConsumerService is null)
+            rabbitMqTasksConsumerService = await consumerFactory.BuildAsync("GmailMessages", stoppingToken)
+                .ConfigureAwait(false);
 
-                await Task.WhenAll(
-                    rabbitMqTasksConsumerService.ExecuteAsync<IRabbitMqMessageProcessingService>(stoppingToken),
-                    rabbitMqRegistrationsConsumerService.ExecuteAsync<IRabbitMqMessageProcessingService>(stoppingToken)
-                );
+        if (rabbitMqRegistrationsConsumerService is null)
+            rabbitMqRegistrationsConsumerService = await consumerFactory.BuildAsync("RegistrationNotify", stoppingToken)
+                .ConfigureAwait(false);
 
-                await Task.Delay(Timeout.Infinite, cancellationToken);
-            }
-        }
-        catch (Exception e)
+        while (!stoppingToken.IsCancellationRequested)
         {
-            //
+            await Task.WhenAll(
+                rabbitMqTasksConsumerService.ExecuteAsync<IRabbitMqMessageProcessingService>(stoppingToken),
+                rabbitMqRegistrationsConsumerService.ExecuteAsync<IRabbitMqMessageProcessingService>(stoppingToken)
+            );
+
+            await Task.Delay(Timeout.Infinite, stoppingToken);
         }
     }
 }
 ```
 
-## 3. Usage (publish)
+## 3. Usage (publish, with extra service)
 ### Create services interfaces
 ```csharp
 public interface IGmailMessageSendRabbitMqService
@@ -108,9 +127,39 @@ public interface IRegistrationPutRabbitMqService
 }
 ```
 
-### Register publish services
+### Publisher via injected factory in the service
 ```csharp
-// Add options for each service if needed
+public class GmailMessageSendRabbitMqService(IPublisherFactory rabbitMqPublishFactory, IOptions<GmailMessageSendRabbitMqOptions> options) : IGmailMessageSendRabbitMqService
+{
+    private IPublisherFactory rabbitMqPublishFactory = rabbitMqPublishFactory;
+    private readonly bool send = options.Value.RabbitMqGmailMessageSend;
+    private IRabbitMqPublisher rabbitMqPublishService = null!;
+
+    public async Task SendAccountCreateConfirmationAsync(string publisherName, string email, string confirmationToken, CancellationToken cancellationToken = default)
+    {
+        if (rabbitMqPublishService == null)
+            rabbitMqPublishService = await rabbitMqPublishFactory.BuildAsync(publisherName, cancellationToken)
+                .ConfigureAwait(false);
+
+        if (send)
+        {
+            await rabbitMqPublishService.PublishAsync(
+                new
+                {
+                    type = options.Value.RabbitMqGmailMessageType,
+                    to = new string[] { email },
+                    token = confirmationToken,
+                },
+                cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+}
+```
+
+### Register publishing services
+```csharp
+// Add options for each service
 builder.Services.AddOptions<GmailMessageSendRabbitMqOptions>()
     .Bind(builder.Configuration)
     .ValidateDataAnnotations()
@@ -121,28 +170,24 @@ builder.Services.AddOptions<RegistrationPutRabbitMqOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-// Register sevices
+// Register publishing sevices
 builder.Services.AddSingleton<IGmailMessageSendRabbitMqService, GmailMessageSendRabbitMqService>();
 builder.Services.AddSingleton<IRegistrationPutRabbitMqService, RegistrationPutRabbitMqService>();
 
+// Register core rabbit client infrastructure
 builder.Services.AddNamedRabbitMqService(builder.Configuration, "RabbitMq");
 ```
 
-### Inject and use publisher in the service
+### Use publishing services in worker
 ```csharp
-public class GmailMessageSendRabbitMqService(
-    IRabbitMqPublishService rabbitMqPublishService,
-    IOptions<GmailMessageSendRabbitMqOptions> options) : IGmailMessageSendRabbitMqService
+public class WorkerTask(IGmailMessageSendRabbitMqService gmailMessageSendRabbitMqService) : IWorkerTask
 {
-    private readonly IRabbitMqPublishService rabbitMqPublishService = rabbitMqPublishService;
+    private readonly IGmailMessageSendRabbitMqService gmailMessageSendRabbitMqService = gmailMessageSendRabbitMqService;
 
-    public async Task SendAccountCreateConfirmationAsync(CancellationToken cancellationToken = default)
+    public async Task WorkAsync(CancellationToken cancellationToken = default)
     {
-        await rabbitMqPublishService.PublishAsync(
-            options.Value.GmailMessageSendRabbitMqConnectionName,
-            options.Value.GmailMessageSendRabbitMqQueue,
-            ...
-        ).ConfigureAwait(false);
+        await gmailMessageSendRabbitMqService.SendAccountCreateConfirmationAsync("GmailMessageSend", "mail@x.com", "gmailMessageToken", cancellationToken)
+            .ConfigureAwait(false);
     }
 }
 ```

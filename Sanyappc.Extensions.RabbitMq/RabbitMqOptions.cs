@@ -9,5 +9,8 @@ namespace Sanyappc.Extensions.RabbitMq
 
         [Required]
         public Dictionary<string, RabbitMqConsumerOptions> Consumers { get; set; } = new();
+
+        [Required]
+        public Dictionary<string, RabbitMqPublisherOptions> Publishers { get; set; } = new();
     }
 }
