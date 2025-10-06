@@ -12,19 +12,19 @@ namespace Sanyappc.Extensions.RabbitMq.ConsumeFactory
         ILogger<RabbitMqConsumer> logger,
         IServiceProvider serviceProvider,
         IRabbitMqChannelFactory rabbitMqChannelFactory,
-        RabbitMqConsumerOptions options) : IRabbitConsumer
+        string connectionName,
+        string queueName) : IRabbitConsumer
     {
         private readonly ILogger<RabbitMqConsumer> logger = logger;
         private readonly IServiceProvider serviceProvider = serviceProvider;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
 
-        private readonly string name = options.Name;
-        private readonly string connectionName = options.ConnectionName;
-        private readonly string queueName = options.QueueName;
+        private readonly string connectionName = connectionName;
+        private readonly string queueName = queueName;
 
         public async Task ExecuteAsync<TService>(CancellationToken stoppingToken = default) where TService : IRabbitMqMessageProcessingService
         {
-            logger.LogInformation("Executing Rabbit Consumer \"{}\" with queueName \"{}\"", name, queueName);
+            logger.LogInformation("Executing Rabbit Consumer with coonection \"{}\"", connectionName);
 
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, stoppingToken)
                 .ConfigureAwait(false);

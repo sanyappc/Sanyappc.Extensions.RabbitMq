@@ -8,7 +8,7 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     public static class RabbitMqServiceCollectionExtensions
     {
-        public static IServiceCollection AddNamedRabbitMqService(this IServiceCollection services, IConfiguration configuration, string sectionName)
+        public static IServiceCollection AddNamedRabbitMqService(this IServiceCollection services, IConfiguration configuration, string sectionName = "RABBITMQ")
         {
             services.AddLogging();
 
@@ -18,7 +18,6 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ValidateOnStart();
 
             services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
-            //services.AddTransient<IRabbitMqPublishService, RabbitMqPublishService>();
             services.TryAddSingleton<IPublisherFactory, PublisherFactory>();
             services.TryAddSingleton<IConsumerFactory, ConsumerFactory>();
 

@@ -11,17 +11,17 @@ namespace Sanyappc.Extensions.RabbitMq
     internal partial class RabbitMqPublisher(
         ILogger<RabbitMqPublisher> logger,
         IRabbitMqChannelFactory rabbitMqChannelFactory,
-        RabbitMqPublisherOptions options) : IRabbitMqPublisher
+        string connectionName,
+        string queueName) : IRabbitMqPublisher
     {
         private readonly ILogger<RabbitMqPublisher> logger = logger;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
-        private readonly string name = options.Name;
-        private readonly string connectionName = options.ConnectionName;
-        private readonly string queueName = options.QueueName;
+        private readonly string connectionName = connectionName;
+        private readonly string queueName = queueName;
 
         public async ValueTask PublishAsync(ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
-            logger.LogInformation("Executing Rabbit Publisher \"{}\" with queueName \"{}\"", name, queueName);
+            logger.LogInformation("Executing Rabbit Publisher with connection \"{}\"", connectionName);
 
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, cancellationToken)
                 .ConfigureAwait(false);

@@ -10,16 +10,20 @@ namespace Amadesci.Extensions.NamedRabbitMq.PublishFactory
         IServiceProvider serviceProvider,
         IOptions<RabbitMqOptions> options) : IPublisherFactory
     {
-        public async Task<IRabbitMqPublisher> BuildAsync(string publisherName, CancellationToken cancellationToken = default)
+        public async Task<IRabbitMqPublisher> BuildAsync(CancellationToken cancellationToken, string connectionName = null)
         {
-            if (!options.Value.Publishers.TryGetValue(publisherName, out RabbitMqPublisherOptions? publisherOptions))
-                throw new KeyNotFoundException($"No Publisher config named \"{publisherName}\"");
+            RabbitMqConnectionSettings? rabbitOptions;
+
+            if (connectionName == null)
+                rabbitOptions = options.Value.Connection;
+            if (!options.Value.Connections.TryGetValue(connectionName, out RabbitMqConnectionSettings? connectionOptions))
+                throw new KeyNotFoundException($"No Connection config named \"{connectionName}\"");
 
             ILoggerFactory loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
             ILogger<RabbitMqPublisher> logger = loggerFactory.CreateLogger<RabbitMqPublisher>();
             IRabbitMqChannelFactory rabbitMqChannelFactory = serviceProvider.GetRequiredService<IRabbitMqChannelFactory>();
 
-            return new RabbitMqPublisher(logger, rabbitMqChannelFactory, publisherOptions);
+            return new RabbitMqPublisher(logger, rabbitMqChannelFactory, connectionName, connectionOptions.QueueName);
         }
     }
 }

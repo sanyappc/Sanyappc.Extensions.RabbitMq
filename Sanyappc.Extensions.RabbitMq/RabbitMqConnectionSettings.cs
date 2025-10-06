@@ -6,17 +6,21 @@ namespace Sanyappc.Extensions.RabbitMq
     {
         [Required]
         [MinLength(1)]
-        public required string RabbitMqHostname { get; init; }
+        public required string HostName { get; init; }
 
         [Range(-1, 65536)]
-        public int RabbitMqPort { get; init; } = -1;
+        public int Port { get; init; } = -1;
 
         [Required]
         [MinLength(1)]
-        public required string RabbitMqUsername { get; init; }
+        public required string UserName { get; init; }
 
         [Required]
         [MinLength(1)]
-        public required string RabbitMqPassword { get; init; }
+        public required string Password { get; init; }
+
+        [Required]
+        [MinLength(1)]
+        public required string QueueName { get; init; }
     }
 }

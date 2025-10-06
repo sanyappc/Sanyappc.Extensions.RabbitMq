@@ -5,12 +5,8 @@ namespace Sanyappc.Extensions.RabbitMq
     public record RabbitMqOptions
     {
         [Required]
-        public Dictionary<string, RabbitMqConnectionSettings> Connections { get; set; } = new();
+        public Dictionary<string, RabbitMqConnectionSettings> Connections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-        [Required]
-        public Dictionary<string, RabbitMqConsumerOptions> Consumers { get; set; } = new();
-
-        [Required]
-        public Dictionary<string, RabbitMqPublisherOptions> Publishers { get; set; } = new();
+        public RabbitMqConnectionSettings? Connection { get; set; }
     }
 }

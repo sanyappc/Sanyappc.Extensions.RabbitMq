@@ -4,6 +4,6 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     public interface IConsumerFactory
     {
-        public Task<RabbitMqConsumer> BuildAsync(string consumerName, CancellationToken cancellationToken);
+        public Task<RabbitMqConsumer> BuildAsync(CancellationToken cancellationToken, string connectionName = null);
     }
 }

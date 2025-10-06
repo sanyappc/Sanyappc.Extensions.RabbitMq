@@ -12,16 +12,22 @@ namespace Sanyappc.Extensions.RabbitMq
     {
         protected readonly IServiceProvider serviceProvider = serviceProvider;
 
-        public async Task<RabbitMqConsumer> BuildAsync(string consumerName, CancellationToken cancellationToken)
+        public async Task<RabbitMqConsumer> BuildAsync(CancellationToken cancellationToken, string connectionName = null)
         {
-            if (!options.Value.Consumers.TryGetValue(consumerName, out RabbitMqConsumerOptions? consumerOptions))
-                throw new KeyNotFoundException($"No Consumer config named \"{consumerName}\"");
+            RabbitMqConnectionSettings? rabbitOptions;
+
+            Console.WriteLine(connectionName);
+
+            if (connectionName == null)
+                rabbitOptions = options.Value.Connection;
+            else if (!options.Value.Connections.TryGetValue(connectionName, out rabbitOptions))
+                throw new KeyNotFoundException($"No Connection config named \"{connectionName}\"");
 
             ILoggerFactory loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
             ILogger<RabbitMqConsumer> logger = loggerFactory.CreateLogger<RabbitMqConsumer>();
             IRabbitMqChannelFactory rabbitMqChannelFactory = serviceProvider.GetRequiredService<IRabbitMqChannelFactory>();
 
-            return new RabbitMqConsumer(logger, serviceProvider, rabbitMqChannelFactory, consumerOptions);
+            return new RabbitMqConsumer(logger, serviceProvider, rabbitMqChannelFactory, connectionName, rabbitOptions.QueueName);
         }
     }
 }

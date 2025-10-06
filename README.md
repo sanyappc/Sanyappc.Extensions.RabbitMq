@@ -1,80 +1,69 @@
 # Sanyappc.Extensions.RabbitMq
+
 ## 1. Configuration setup
+
 ### appsettings.json
-Declare named connections under `RabbitMq.Connections`, publishers and consumers under `RabbitMq.Consumers` and `RabbitMq.Publishers`:
+Declare named connections for each publisher and consumer under `RabbitMq.Connections`:
 
 ```json
 "RabbitMq": {
   "Connections": {
-    "Tasks": {
+    "PublisherTasks": {
       "RabbitMqHostName": "localhost",
       "RabbitMqPort": 5672,
       "RabbitMqUserName": "admin1",
-      "RabbitMqPassword": "qwerty1"
+      "RabbitMqPassword": "qwerty1",
+      "QueueName": "gmail-message-send"
     },
-    "Registrations": {
+    "ConsumerTasks": {
+      "RabbitMqHostName": "localhost",
+      "RabbitMqPort": 5672,
+      "RabbitMqUserName": "admin1",
+      "RabbitMqPassword": "qwerty1",
+      "QueueName": "gmail-message-send"
+    },
+    "ConsumerRegistrations": {
       "RabbitMqHostName": "localhost",
       "RabbitMqPort": 5673,
       "RabbitMqUserName": "admin2",
-      "RabbitMqPassword": "qwerty2"
-    }
-  },
-  "Consumers": {
-    "GmailMessages": {
-      "Name": "GmailMessages",
-      "QueueName": "amadesci-gmail-message-send",
-      "ConnectionName": "Tasks"
-    },
-    "RegistrationNotify": {
-      "Name": "RegistrationNotifications",
-      "QueueName": "amadesci-registration-confirmation-put",
-      "ConnectionName": "Registrations"
-    }
-  },
-  "Publishers": {
-    "GmailMessageSend": {
-      "Name": "GmailMessageSend",
-      "ConnectionName": "Tasks",
-      "QueueName": "amadesci-gmail-message-send"
-    },
-    "RegistrationNotify": {
-      "Name": "RegistrationNotify",
-      "ConnectionName": "Registrations",
-      "QueueName": "amadesci-registration-confirmation-put"
+      "RabbitMqPassword": "qwerty2",
+      "QueueName": "registration-confirmation-put"
     }
   }
 },
 ```
-Consumers' and publishers' ConnectionName must correlate with connections names.
 
 ### env
-```csharp
-DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQHOSTNAME = "localhost"
-DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQPORT     = "5672"
-DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQUSERNAME = "admin1"
-DA__RABBITMQ__CONNECTIONS__TASKS__RABBITMQPASSWORD = "qwerty1"
+```.env
+DA_RABBITMQ__CONNECTIONS__CONSUMERTASKS__HOSTNAME  = "localhost"
+DA_RABBITMQ__CONNECTIONS__CONSUMERTASKS__PORT      = "5672"
+DA_RABBITMQ__CONNECTIONS__CONSUMERTASKS__USERNAME  = "admin1"
+DA_RABBITMQ__CONNECTIONS__CONSUMERTASKS__PASSWORD  = "qwerty1"
+DA_RABBITMQ__CONNECTIONS__CONSUMERTASKS__QUEUENAME = "gmail-message-send"
 
-DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQHOSTNAME = "localhost"
-DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQPORT     = "5673"
-DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQUSERNAME = "admin2"
-DA__RABBITMQ__CONNECTIONS__REGISTRATIONS__RABBITMQPASSWORD = "qwerty2"
-
-DA__RABBITMQ__CONSUMERS__GMAILMESSAGES__NAME           = "GmailMessages"
-DA__RABBITMQ__CONSUMERS__GMAILMESSAGES__QUEUENAME      = "amadesci-gmail-message-send"
-DA__RABBITMQ__CONSUMERS__GMAILMESSAGES__CONNECTIONNAME = "Tasks"
-
-DA__RABBITMQ__PUBLISHERS__GMAILMESSAGESEND__NAME           = "GmailMessageSend"
-DA__RABBITMQ__PUBLISHERS__GMAILMESSAGESEND__QUEUENAME      = "amadesci-gmail-message-send"
-DA__RABBITMQ__PUBLISHERS__GMAILMESSAGESEND__CONNECTIONNAME = "Tasks"
+DA_RABBITMQ__CONNECTIONS__CONSUMERREGISTRATIONS__HOSTNAME  = "localhost"
+DA_RABBITMQ__CONNECTIONS__CONSUMERREGISTRATIONS__PORT      = "5673"
+DA_RABBITMQ__CONNECTIONS__CONSUMERREGISTRATIONS__USERNAME  = "admin2"
+DA_RABBITMQ__CONNECTIONS__CONSUMERREGISTRATIONS__PASSWORD  = "qwerty2"
+DA_RABBITMQ__CONNECTIONS__CONSUMERREGISTRATIONS__QUEUENAME = "registration-confirmation-put"
 
 builder.Configuration.AddEnvironmentVariables("DA_");
+```
+
+Or, for a single connection, options can be declared simply:
+```.env
+DA_RABBITMQ__CONNECTION__HOSTNAME  = "localhost"
+DA_RABBITMQ__CONNECTION__PORT      = "5672"
+DA_RABBITMQ__CONNECTION__USERNAME  = "admin1"
+DA_RABBITMQ__CONNECTION__PASSWORD  = "qwerty1"
+DA_RABBITMQ__CONNECTION__QUEUENAME = "gmail-message-send"
 ```
 
 ## 2. Usage (consumers)
 ### Core RabbutMq services Registration
 ```csharp
 // Register core rabbit client infrastructure
-builder.Services.AddNamedRabbitMqService(builder.Configuration, "RabbitMq");
+builder.Services.AddNamedRabbitMqService(builder.Configuration, "RABBITMQ");
 
 // Register message processor
 builder.Services.AddSingleton<IRabbitMqMessageProcessingService, RabbitMqMessageProcessingService>();
@@ -93,11 +82,11 @@ public class Worker(IConsumerFactory consumerFactory) : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (rabbitMqTasksConsumerService is null)
-            rabbitMqTasksConsumerService = await consumerFactory.BuildAsync("GmailMessages", stoppingToken)
+            rabbitMqTasksConsumerService = await consumerFactory.BuildAsync(stoppingToken, "ConsumerTasks")
                 .ConfigureAwait(false);
 
         if (rabbitMqRegistrationsConsumerService is null)
-            rabbitMqRegistrationsConsumerService = await consumerFactory.BuildAsync("RegistrationNotify", stoppingToken)
+            rabbitMqRegistrationsConsumerService = await consumerFactory.BuildAsync(stoppingToken, "ConsumerRegistrations")
                 .ConfigureAwait(false);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -112,6 +101,12 @@ public class Worker(IConsumerFactory consumerFactory) : BackgroundService
     }
 }
 ```
+
+Or, for a single connection of a ```DA_RABBITMQ__CONNECTION__HOSTNAME  = "localhost"``` configuration format:
+```csharp
+rabbitMqTasksConsumerService = await consumerFactory.BuildAsync(stoppingToken);
+```
+
 
 ## 3. Usage (publish, with extra service)
 ### Create services interfaces

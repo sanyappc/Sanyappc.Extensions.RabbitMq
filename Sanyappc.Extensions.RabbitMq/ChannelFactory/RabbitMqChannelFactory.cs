@@ -14,10 +14,21 @@ namespace Sanyappc.Extensions.RabbitMq
         private readonly RabbitMqOptions rabbitMqOptions = options.Value;
         private readonly SemaphoreSlim semaphoreSlim = new(1, 1);
 
-        private async Task<IConnection> GetOrCreateConnectionAsync(string connectionName, CancellationToken cancellationToken)
+        private async Task<IConnection> GetOrCreateConnectionAsync(CancellationToken cancellationToken, string connectionName = null)
         {
-            if (!rabbitMqOptions.Connections.TryGetValue(connectionName, out RabbitMqConnectionSettings? connectionSettings))
-                throw new KeyNotFoundException($"No RMQ config named '{connectionName}'");
+            RabbitMqConnectionSettings? connectionSettings;
+
+            if (connectionName == null)
+            {
+                connectionSettings = rabbitMqOptions.Connection;
+                connectionName = "default";
+            }
+            else if (!rabbitMqOptions.Connections.TryGetValue(connectionName, out connectionSettings))
+            {
+                throw new KeyNotFoundException($"No RMQ config named \"{connectionName}\"");
+            }
+
+            logger.LogInformation("RMQ config for {}", connectionName);
 
             await semaphoreSlim.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -28,15 +39,15 @@ namespace Sanyappc.Extensions.RabbitMq
                 {
                     ConnectionFactory factory = new ConnectionFactory
                     {
-                        HostName = connectionSettings.RabbitMqHostname,
-                        Port = connectionSettings.RabbitMqPort,
-                        UserName = connectionSettings.RabbitMqUsername,
-                        Password = connectionSettings.RabbitMqPassword
+                        HostName = connectionSettings.HostName,
+                        Port = connectionSettings.Port,
+                        UserName = connectionSettings.UserName,
+                        Password = connectionSettings.Password
                     };
                     return factory.CreateConnectionAsync(cancellationToken);
                 }).ConfigureAwait(false);
 
-                logger.LogInformation("Created connection to {} : {}", connectionSettings.RabbitMqHostname, connectionSettings.RabbitMqPort);
+                logger.LogInformation("Created connection to {} : {}", connectionSettings.HostName, connectionSettings.Port);
 
                 return connection;
             }
@@ -48,7 +59,7 @@ namespace Sanyappc.Extensions.RabbitMq
 
         public async ValueTask<IChannel> CreateChannelAsync(string connectionName, CancellationToken cancellationToken = default)
         {
-            IConnection connection = await GetOrCreateConnectionAsync(connectionName, cancellationToken)
+            IConnection connection = await GetOrCreateConnectionAsync(cancellationToken, connectionName)
                 .ConfigureAwait(false);
 
             IChannel channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken)

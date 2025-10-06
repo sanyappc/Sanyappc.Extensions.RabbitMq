@@ -4,6 +4,6 @@ namespace Amadesci.Extensions.NamedRabbitMq.PublishFactory
 {
     public interface IPublisherFactory
     {
-        Task<IRabbitMqPublisher> BuildAsync(string publisherName, CancellationToken cancellationToken);
+        Task<IRabbitMqPublisher> BuildAsync(CancellationToken cancellationToken, string connectionName = null);
     }
 }
