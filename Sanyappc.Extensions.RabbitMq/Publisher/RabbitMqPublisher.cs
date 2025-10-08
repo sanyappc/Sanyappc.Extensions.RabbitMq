@@ -16,10 +16,11 @@ namespace Sanyappc.Extensions.RabbitMq
     {
         private readonly ILogger<RabbitMqPublisher> logger = logger;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
+
         private readonly string connectionName = connectionName;
         private readonly string queueName = queueName;
 
-        public async ValueTask PublishAsync(ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        public async Task PublishAsync(ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
             logger.LogInformation("Executing Rabbit Publisher with connection \"{}\"", connectionName);
 
@@ -36,13 +37,13 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ConfigureAwait(false);
         }
 
-        public async ValueTask PublishAsync<T>(T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task PublishAsync<T>(T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             await PublishAsync(RabbitMqMessage.SerializeBody(body, options), cancellationToken)
               .ConfigureAwait(false);
         }
 
-        public async ValueTask<TOut> PublishAsync<TIn, TOut>(TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task<TOut> PublishAsync<TIn, TOut>(TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             const string replyTo = "amq.rabbitmq.reply-to";
 

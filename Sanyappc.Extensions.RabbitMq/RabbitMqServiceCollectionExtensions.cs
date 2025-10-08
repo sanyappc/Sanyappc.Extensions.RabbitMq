@@ -1,6 +1,4 @@
-﻿using Amadesci.Extensions.NamedRabbitMq.PublishFactory;
-
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -18,8 +16,7 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ValidateOnStart();
 
             services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
-            services.TryAddSingleton<IPublisherFactory, PublisherFactory>();
-            services.TryAddSingleton<IConsumerFactory, ConsumerFactory>();
+            services.TryAddSingleton<IRabbitMqClientFactory, RabbitMqClientFactory>();
 
             return services;
         }

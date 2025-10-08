@@ -8,12 +8,12 @@ using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq.ConsumeFactory
 {
-    public class RabbitMqConsumer(
+    internal partial class RabbitMqConsumer(
         ILogger<RabbitMqConsumer> logger,
         IServiceProvider serviceProvider,
         IRabbitMqChannelFactory rabbitMqChannelFactory,
         string connectionName,
-        string queueName) : IRabbitConsumer
+        string queueName) : IRabbitMqConsumer
     {
         private readonly ILogger<RabbitMqConsumer> logger = logger;
         private readonly IServiceProvider serviceProvider = serviceProvider;
@@ -22,7 +22,7 @@ namespace Sanyappc.Extensions.RabbitMq.ConsumeFactory
         private readonly string connectionName = connectionName;
         private readonly string queueName = queueName;
 
-        public async Task ExecuteAsync<TService>(CancellationToken stoppingToken = default) where TService : IRabbitMqMessageProcessingService
+        public async Task ConsumeAsync<TService>(CancellationToken stoppingToken = default) where TService : IRabbitMqMessageProcessingService
         {
             logger.LogInformation("Executing Rabbit Consumer with coonection \"{}\"", connectionName);
 
