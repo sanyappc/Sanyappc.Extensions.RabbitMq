@@ -8,37 +8,46 @@ using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> logger, IRabbitMqChannelFactory rabbitMqChannelFactory) : IRabbitMqPublishService
+    internal partial class RabbitMqPublisher(
+        ILogger<RabbitMqPublisher> logger,
+        IRabbitMqChannelFactory rabbitMqChannelFactory,
+        string connectionName,
+        string queueName) : IRabbitMqPublisher
     {
-        private readonly ILogger<RabbitMqPublishService> logger = logger;
+        private readonly ILogger<RabbitMqPublisher> logger = logger;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
 
-        public async ValueTask PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        private readonly string connectionName = connectionName;
+        private readonly string queueName = queueName;
+
+        public async Task PublishAsync(ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
-            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
+            logger.LogInformation("Executing Rabbit Publisher with connection \"{}\"", connectionName);
+
+            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, cancellationToken)
                 .ConfigureAwait(false);
 
-            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
+            await channel.QueueDeclareAsync(queueName, true, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             BasicProperties properties = new();
             properties.Inject(Activity.Current);
 
-            await channel.BasicPublishAsync(string.Empty, queue, false, properties, body, cancellationToken)
+            await channel.BasicPublishAsync(string.Empty, queueName, false, properties, body, cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        public async ValueTask PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task PublishAsync<T>(T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
-            await PublishAsync(queue, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
+            await PublishAsync(RabbitMqMessage.SerializeBody(body, options), cancellationToken)
               .ConfigureAwait(false);
         }
 
-        public async ValueTask<TOut> PublishAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task<TOut> PublishAsync<TIn, TOut>(TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             const string replyTo = "amq.rabbitmq.reply-to";
 
-            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
+            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(connectionName, cancellationToken)
                 .ConfigureAwait(false);
 
             using SemaphoreSlim semaphoreSlim = new(0, 1);
@@ -70,14 +79,14 @@ namespace Sanyappc.Extensions.RabbitMq
             await channel.BasicConsumeAsync(replyTo, true, consumer, cancellationToken)
                 .ConfigureAwait(false);
 
-            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
+            await channel.QueueDeclareAsync(queueName, true, false, false, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             BasicProperties properties = new();
             properties.Inject(Activity.Current);
             properties.ReplyTo = replyTo;
 
-            await channel.BasicPublishAsync(string.Empty, queue, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
+            await channel.BasicPublishAsync(string.Empty, queueName, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
                 .ConfigureAwait(false);
 
             await semaphoreSlim.WaitAsync(cancellationToken)
@@ -88,5 +97,14 @@ namespace Sanyappc.Extensions.RabbitMq
 
             return replyBody ?? throw new InvalidOperationException();
         }
+
+        //public async ValueTask DisposeAsync()
+        //{
+        //    if (channel?.IsOpen == true)
+        //    {
+        //        await channel.CloseAsync();
+        //    }
+        //    channel?.Dispose();
+        //}
     }
 }

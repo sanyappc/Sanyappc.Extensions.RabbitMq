@@ -2,21 +2,11 @@
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal record RabbitMqOptions
+    public record RabbitMqOptions
     {
         [Required]
-        [MinLength(1)]
-        public required string RabbitMqHostname { get; init; }
+        public Dictionary<string, RabbitMqConnectionSettings> Connections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-        [Range(-1, 65536)]
-        public int RabbitMqPort { get; init; } = -1;
-
-        [Required]
-        [MinLength(1)]
-        public required string RabbitMqUsername { get; init; }
-
-        [Required]
-        [MinLength(1)]
-        public required string RabbitMqPassword { get; init; }
+        public RabbitMqConnectionSettings? Connection { get; set; }
     }
 }

@@ -4,6 +4,6 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     public interface IRabbitMqChannelFactory
     {
-        ValueTask<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default);
+        ValueTask<IChannel> CreateChannelAsync(string connectionName, CancellationToken cancellationToken = default);
     }
 }

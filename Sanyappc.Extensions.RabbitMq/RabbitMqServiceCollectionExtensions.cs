@@ -1,24 +1,22 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
     public static class RabbitMqServiceCollectionExtensions
     {
-        public static IServiceCollection AddRabbitMqService(this IServiceCollection services)
+        public static IServiceCollection AddNamedRabbitMqService(this IServiceCollection services, IConfiguration configuration, string sectionName = "RABBITMQ")
         {
-            ArgumentNullException.ThrowIfNull(services);
-
             services.AddLogging();
+
             services.AddOptions<RabbitMqOptions>()
-                .BindConfiguration(string.Empty)
+                .Bind(configuration.GetSection(sectionName))
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
             services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
-
-            services.TryAddTransient<IRabbitMqConsumeService, RabbitMqConsumeService>();
-            services.TryAddTransient<IRabbitMqPublishService, RabbitMqPublishService>();
+            services.TryAddSingleton<IRabbitMqClientFactory, RabbitMqClientFactory>();
 
             return services;
         }
