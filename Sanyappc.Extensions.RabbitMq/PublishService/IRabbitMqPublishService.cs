@@ -4,10 +4,10 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     public interface IRabbitMqPublishService
     {
-        ValueTask PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default);
+        Task PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default);
 
-        ValueTask PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default);
+        Task PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default);
 
-        ValueTask<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default);
+        Task<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default);
     }
 }

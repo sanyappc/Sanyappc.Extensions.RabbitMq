@@ -6,7 +6,6 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     internal static class RabbitMqBasicPropertiesExtensions
     {
-        private const string CorrelationIdTagKey = "correlation-id";
 
         private static readonly ActivitySource ActivitySource = RabbitMqTelemetry.ActivitySource;
 
@@ -31,7 +30,7 @@ namespace Sanyappc.Extensions.RabbitMq
             activity.SetTag("messaging.operation", "receive");
 
             if (properties.CorrelationId is not null)
-                activity.SetTag(CorrelationIdTagKey, properties.CorrelationId);
+                activity.SetTag("messaging.message.conversation_id", properties.CorrelationId);
 
             if (properties.MessageId is not null)
                 activity.SetTag("messaging.message.id", properties.MessageId);
@@ -74,9 +73,6 @@ namespace Sanyappc.Extensions.RabbitMq
 
             static void setter(object? carrier, string name, string value)
             {
-                if (name == CorrelationIdTagKey)
-                    return;
-
                 IBasicProperties basicProperties = carrier as IBasicProperties ?? throw new InvalidOperationException();
 
                 basicProperties.Headers ??= new Dictionary<string, object?>();

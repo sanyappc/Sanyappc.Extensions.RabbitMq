@@ -1,22 +1,22 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal record RabbitMqOptions
+    public class RabbitMqOptions
     {
         [Required]
         [MinLength(1)]
-        public required string RabbitMqHostname { get; init; }
+        public string Hostname { get; set; } = string.Empty;
 
         [Range(-1, 65536)]
-        public int RabbitMqPort { get; init; } = -1;
+        public int Port { get; set; } = -1;
 
         [Required]
         [MinLength(1)]
-        public required string RabbitMqUsername { get; init; }
+        public string Username { get; set; } = string.Empty;
 
         [Required]
         [MinLength(1)]
-        public required string RabbitMqPassword { get; init; }
+        public string Password { get; set; } = string.Empty;
     }
 }

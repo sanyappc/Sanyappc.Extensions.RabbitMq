@@ -14,7 +14,7 @@ namespace Sanyappc.Extensions.RabbitMq
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
         private readonly IServiceScopeFactory serviceScopeFactory = serviceScopeFactory;
 
-        public async ValueTask ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
+        public async Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
             where T : IRabbitMqMessageProcessingService
         {
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
@@ -30,7 +30,8 @@ namespace Sanyappc.Extensions.RabbitMq
                 using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
                 {
                     ["Queue"] = queue,
-                    ["MessageId"] = @event.BasicProperties.MessageId ?? $"{@event.DeliveryTag}",
+                    ["MessageId"] = @event.BasicProperties.MessageId,
+                    ["DeliveryTag"] = @event.DeliveryTag,
                     ["TraceId"] = activity?.TraceId.ToString(),
                     ["SpanId"] = activity?.SpanId.ToString(),
                 });

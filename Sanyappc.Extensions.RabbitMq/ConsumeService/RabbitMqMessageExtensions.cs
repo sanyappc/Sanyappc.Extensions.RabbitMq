@@ -7,7 +7,7 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     public static class RabbitMqMessageExtensions
     {
-        public static async ValueTask AckAsync(this RabbitMqMessage message, CancellationToken cancellationToken = default)
+        public static async Task AckAsync(this RabbitMqMessage message, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(message);
 
@@ -15,7 +15,7 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ConfigureAwait(false);
         }
 
-        public static async ValueTask RejectAsync(this RabbitMqMessage message, bool requeue, CancellationToken cancellationToken = default)
+        public static async Task RejectAsync(this RabbitMqMessage message, bool requeue, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(message);
 
@@ -23,7 +23,7 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ConfigureAwait(false);
         }
 
-        public static async ValueTask ReplyAsync(this RabbitMqMessage message, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        public static async Task ReplyAsync(this RabbitMqMessage message, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(message);
 
@@ -41,7 +41,7 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ConfigureAwait(false);
         }
 
-        public static async ValueTask ReplyAsync<T>(this RabbitMqMessage message, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public static async Task ReplyAsync<T>(this RabbitMqMessage message, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             await message.ReplyAsync(RabbitMqMessage.SerializeBody(body, options), cancellationToken)
                 .ConfigureAwait(false);

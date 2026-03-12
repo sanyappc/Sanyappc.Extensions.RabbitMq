@@ -11,10 +11,10 @@ namespace Sanyappc.Extensions.RabbitMq
         private readonly ILogger<RabbitMqChannelFactory> logger = logger;
         private readonly ConnectionFactory connectionFactory = new()
         {
-            HostName = options.Value.RabbitMqHostname,
-            Port = options.Value.RabbitMqPort,
-            UserName = options.Value.RabbitMqUsername,
-            Password = options.Value.RabbitMqPassword
+            HostName = options.Value.Hostname,
+            Port = options.Value.Port,
+            UserName = options.Value.Username,
+            Password = options.Value.Password
         };
 
         private readonly SemaphoreSlim semaphoreSlim = new(1, 1);
