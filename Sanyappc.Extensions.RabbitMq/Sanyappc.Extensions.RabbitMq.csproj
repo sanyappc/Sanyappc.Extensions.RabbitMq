@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageProjectUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</PackageProjectUrl>
+    <PackageTags>rabbitmq;messaging;amqp;opentelemetry;tracing;metrics</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <IncludeSymbols>True</IncludeSymbols>

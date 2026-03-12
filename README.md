@@ -1,5 +1,7 @@
 # Sanyappc.Extensions.RabbitMq
 
+[![NuGet](https://img.shields.io/nuget/v/Sanyappc.Extensions.RabbitMq)](https://www.nuget.org/packages/Sanyappc.Extensions.RabbitMq)
+
 A .NET library for publishing and consuming RabbitMQ messages. Provides typed JSON messaging, manual acknowledgement, request/reply over Direct Reply-to, and built-in distributed tracing.
 
 ## Installation
