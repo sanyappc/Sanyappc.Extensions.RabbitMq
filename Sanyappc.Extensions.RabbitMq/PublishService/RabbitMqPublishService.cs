@@ -28,6 +28,10 @@ namespace Sanyappc.Extensions.RabbitMq
 
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, body, cancellationToken)
                 .ConfigureAwait(false);
+
+            RabbitMqTelemetry.PublishedMessages.Add(1,
+                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                new KeyValuePair<string, object?>("messaging.destination.name", queue));
         }
 
         public async Task PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)

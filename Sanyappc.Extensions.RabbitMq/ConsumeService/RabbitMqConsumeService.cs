@@ -36,6 +36,12 @@ namespace Sanyappc.Extensions.RabbitMq
                     ["SpanId"] = activity?.SpanId.ToString(),
                 });
 
+                RabbitMqTelemetry.ReceivedMessages.Add(1,
+                    new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                    new KeyValuePair<string, object?>("messaging.destination.name", queue));
+
+                long startTimestamp = Stopwatch.GetTimestamp();
+
                 AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
                 await using (serviceScope.ConfigureAwait(false))
                 {
@@ -44,6 +50,11 @@ namespace Sanyappc.Extensions.RabbitMq
                     await scopedMessageProcessingService.ProcessMessageAsync(new RabbitMqMessage(channel, @event), cancellationToken)
                         .ConfigureAwait(false);
                 }
+
+                RabbitMqTelemetry.ProcessDuration.Record(
+                    Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
+                    new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                    new KeyValuePair<string, object?>("messaging.destination.name", queue));
             };
 
             TaskCompletionSource channelClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);

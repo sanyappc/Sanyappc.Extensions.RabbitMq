@@ -137,7 +137,9 @@ public class InvoiceProcessor : IRabbitMqMessageProcessingService
 }
 ```
 
-## Distributed tracing (OpenTelemetry)
+## OpenTelemetry
+
+### Tracing
 
 The library creates spans for publish, request, and receive operations using the activity source name exposed by `RabbitMqTelemetry.ActivitySourceName`.
 
@@ -155,6 +157,25 @@ Spans follow [OpenTelemetry messaging semantic conventions](https://opentelemetr
 | `PublishAsync` | `{queue} publish` | Producer |
 | `RequestAsync` | `{queue} request` | Client |
 | `ConsumeAsync` | `{queue} receive` | Consumer |
+
+### Metrics
+
+The library records messaging metrics using the meter name exposed by `RabbitMqTelemetry.MeterName`.
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics
+        .AddMeter(RabbitMqTelemetry.MeterName)
+        .AddOtlpExporter());
+```
+
+| Instrument | Type | Unit | When recorded |
+|---|---|---|---|
+| `messaging.publish.messages` | Counter | `{message}` | After each `PublishAsync` |
+| `messaging.receive.messages` | Counter | `{message}` | On each message delivery |
+| `messaging.process.duration` | Histogram | `s` | Time spent in `ProcessMessageAsync` |
+
+All instruments include `messaging.system = "rabbitmq"` and `messaging.destination.name = {queue}` tags.
 
 ### Log correlation
 
