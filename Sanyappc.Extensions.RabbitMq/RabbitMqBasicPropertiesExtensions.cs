@@ -6,27 +6,37 @@ namespace Sanyappc.Extensions.RabbitMq
 {
     internal static class RabbitMqBasicPropertiesExtensions
     {
-        private const string MessageDeliveryActivityName = "Sanyappc.Extensions.RabbitMq.RabbitMqMessageDelivery";
         private const string CorrelationIdTagKey = "correlation-id";
+
+        private static readonly ActivitySource ActivitySource = RabbitMqTelemetry.ActivitySource;
 
         private static readonly DistributedContextPropagator distributedContextPropagator = DistributedContextPropagator.CreateDefaultPropagator();
 
-        public static Activity StartActivity(this IReadOnlyBasicProperties properties)
+        public static Activity? StartReceiveActivity(this IReadOnlyBasicProperties properties, string queue)
         {
-            Activity activity = new(MessageDeliveryActivityName);
-
             distributedContextPropagator.ExtractTraceIdAndState(properties, getter, out string? traceId, out string? traceState);
 
-            if (traceId is not null)
-                activity.SetParentId(traceId);
+            ActivityContext.TryParse(traceId, traceState, isRemote: true, out ActivityContext parentContext);
+
+            Activity? activity = ActivitySource.StartActivity($"{queue} receive", ActivityKind.Consumer, parentContext);
+
+            if (activity is null)
+                return null;
 
             if (traceState is not null)
                 activity.TraceStateString = traceState;
 
+            activity.SetTag("messaging.system", "rabbitmq");
+            activity.SetTag("messaging.destination.name", queue);
+            activity.SetTag("messaging.operation", "receive");
+
             if (properties.CorrelationId is not null)
                 activity.SetTag(CorrelationIdTagKey, properties.CorrelationId);
 
-            return activity.Start();
+            if (properties.MessageId is not null)
+                activity.SetTag("messaging.message.id", properties.MessageId);
+
+            return activity;
 
             static void getter(object? carrier, string name, out string? value, out IEnumerable<string>? values)
             {
@@ -38,6 +48,22 @@ namespace Sanyappc.Extensions.RabbitMq
                 else
                     value = null;
             }
+        }
+
+        public static Activity? StartPublishActivity(string queue) =>
+            ActivitySource.StartActivity($"{queue} publish", ActivityKind.Producer)?
+                .WithMessagingTags(queue, "publish");
+
+        public static Activity? StartRequestActivity(string queue) =>
+            ActivitySource.StartActivity($"{queue} request", ActivityKind.Client)?
+                .WithMessagingTags(queue, "request");
+
+        private static Activity WithMessagingTags(this Activity activity, string queue, string operation)
+        {
+            activity.SetTag("messaging.system", "rabbitmq");
+            activity.SetTag("messaging.destination.name", queue);
+            activity.SetTag("messaging.operation", operation);
+            return activity;
         }
 
         public static IBasicProperties Inject(this IBasicProperties properties, Activity? activity)

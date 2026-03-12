@@ -15,6 +15,8 @@ namespace Sanyappc.Extensions.RabbitMq
 
         public async ValueTask PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
+            using Activity? activity = RabbitMqBasicPropertiesExtensions.StartPublishActivity(queue);
+
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
                 .ConfigureAwait(false);
 
@@ -34,9 +36,11 @@ namespace Sanyappc.Extensions.RabbitMq
               .ConfigureAwait(false);
         }
 
-        public async ValueTask<TOut> PublishAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        public async ValueTask<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             const string replyTo = "amq.rabbitmq.reply-to";
+
+            using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue);
 
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
                 .ConfigureAwait(false);

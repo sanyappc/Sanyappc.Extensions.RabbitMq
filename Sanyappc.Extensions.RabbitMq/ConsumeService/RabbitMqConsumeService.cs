@@ -26,9 +26,14 @@ namespace Sanyappc.Extensions.RabbitMq
             AsyncEventingBasicConsumer consumer = new(channel);
             consumer.ReceivedAsync += async (object sender, BasicDeliverEventArgs @event) =>
             {
-                using Activity activity = @event.BasicProperties.StartActivity();
-                using IDisposable? loggerScope = logger.BeginScope(
-                    "MessageId: {messageId}", @event.BasicProperties.MessageId ?? $"{@event.DeliveryTag}");
+                using Activity? activity = @event.BasicProperties.StartReceiveActivity(queue);
+                using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
+                {
+                    ["Queue"] = queue,
+                    ["MessageId"] = @event.BasicProperties.MessageId ?? $"{@event.DeliveryTag}",
+                    ["TraceId"] = activity?.TraceId.ToString(),
+                    ["SpanId"] = activity?.SpanId.ToString(),
+                });
 
                 AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
                 await using (serviceScope.ConfigureAwait(false))
