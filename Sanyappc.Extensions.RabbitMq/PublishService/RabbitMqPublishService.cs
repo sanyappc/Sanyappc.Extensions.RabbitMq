@@ -45,30 +45,21 @@ namespace Sanyappc.Extensions.RabbitMq
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            using SemaphoreSlim semaphoreSlim = new(0, 1);
-
-            TOut? replyBody = default;
-            Exception? replyException = default;
+            TaskCompletionSource<TOut> replyTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             AsyncEventingBasicConsumer consumer = new(channel);
-            consumer.ReceivedAsync += async (object sender, BasicDeliverEventArgs @event) =>
+            consumer.ReceivedAsync += (object sender, BasicDeliverEventArgs @event) =>
             {
-                if (semaphoreSlim.CurrentCount != 0)
-                    return;
-
-                await Task.CompletedTask
-                    .ConfigureAwait(false);
-
                 try
                 {
-                    replyBody = RabbitMqMessage.DeserializeBody<TOut>(@event.Body.Span, options);
+                    replyTaskCompletionSource.TrySetResult(RabbitMqMessage.DeserializeBody<TOut>(@event.Body.Span, options));
                 }
                 catch (Exception ex)
                 {
-                    replyException = ex;
+                    replyTaskCompletionSource.TrySetException(ex);
                 }
 
-                semaphoreSlim.Release();
+                return Task.CompletedTask;
             };
 
             await channel.BasicConsumeAsync(replyTo, true, consumer, cancellationToken)
@@ -84,13 +75,8 @@ namespace Sanyappc.Extensions.RabbitMq
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
                 .ConfigureAwait(false);
 
-            await semaphoreSlim.WaitAsync(cancellationToken)
+            return await replyTaskCompletionSource.Task.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
-
-            if (replyException is not null)
-                throw replyException;
-
-            return replyBody ?? throw new InvalidOperationException();
         }
     }
 }

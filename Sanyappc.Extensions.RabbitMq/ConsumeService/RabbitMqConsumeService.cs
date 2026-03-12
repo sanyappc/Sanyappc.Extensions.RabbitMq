@@ -46,10 +46,22 @@ namespace Sanyappc.Extensions.RabbitMq
                 }
             };
 
+            TaskCompletionSource channelClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            channel.ChannelShutdownAsync += (sender, args) =>
+            {
+                if (args.Initiator == ShutdownInitiator.Application)
+                    channelClosed.TrySetResult();
+                else
+                    channelClosed.TrySetException(new InvalidOperationException($"Channel shut down unexpectedly: {args.ReplyText}"));
+
+                return Task.CompletedTask;
+            };
+
             await channel.BasicConsumeAsync(queue, false, consumer, cancellationToken)
                .ConfigureAwait(false);
 
-            await Task.Delay(Timeout.Infinite, cancellationToken)
+            await channelClosed.Task.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
     }
