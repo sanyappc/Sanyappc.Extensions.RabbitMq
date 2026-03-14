@@ -49,6 +49,7 @@ namespace Sanyappc.Extensions.RabbitMq
         }
 
         public async Task<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+            where TOut : notnull
         {
             const string replyTo = "amq.rabbitmq.reply-to";
 

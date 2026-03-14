@@ -18,11 +18,13 @@ namespace Sanyappc.Extensions.RabbitMq
         public BasicDeliverEventArgs Event { get; }
 
         public T GetBody<T>(JsonSerializerOptions? options = null)
+            where T : notnull
         {
             return DeserializeBody<T>(Event.Body.Span, options);
         }
 
         public static T DeserializeBody<T>(ReadOnlySpan<byte> message, JsonSerializerOptions? options = null)
+            where T : notnull
         {
             return JsonSerializer.Deserialize<T>(message, options) ?? throw new InvalidOperationException("Deserialized value is null.");
         }
