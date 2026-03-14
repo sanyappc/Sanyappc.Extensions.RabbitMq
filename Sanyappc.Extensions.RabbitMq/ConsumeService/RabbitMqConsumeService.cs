@@ -8,11 +8,20 @@ using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> logger, IRabbitMqChannelFactory rabbitMqChannelFactory, IServiceScopeFactory serviceScopeFactory) : IRabbitMqConsumeService
+    internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> logger, IRabbitMqChannelFactory rabbitMqChannelFactory, IServiceScopeFactory serviceScopeFactory) : IRabbitMqConsumeService
     {
         private readonly ILogger<RabbitMqConsumeService> logger = logger;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
         private readonly IServiceScopeFactory serviceScopeFactory = serviceScopeFactory;
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Received message from queue {Queue}")]
+        private static partial void LogMessageReceived(ILogger logger, string queue);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Error processing message from queue {Queue}")]
+        private static partial void LogMessageProcessingError(ILogger logger, string queue, Exception exception);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Channel shut down unexpectedly: {Reason}")]
+        private static partial void LogChannelShutdown(ILogger logger, string reason);
 
         public async Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
             where T : IRabbitMqMessageProcessingService
@@ -36,19 +45,30 @@ namespace Sanyappc.Extensions.RabbitMq
                     ["SpanId"] = activity?.SpanId.ToString(),
                 });
 
+                LogMessageReceived(logger, queue);
+
                 RabbitMqTelemetry.ReceivedMessages.Add(1,
                     new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
                     new KeyValuePair<string, object?>("messaging.destination.name", queue));
 
                 long startTimestamp = Stopwatch.GetTimestamp();
 
-                AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
-                await using (serviceScope.ConfigureAwait(false))
+                try
                 {
-                    T scopedMessageProcessingService = serviceScope.ServiceProvider.GetRequiredService<T>();
+                    AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
+                    await using (serviceScope.ConfigureAwait(false))
+                    {
+                        T scopedMessageProcessingService = serviceScope.ServiceProvider.GetRequiredService<T>();
 
-                    await scopedMessageProcessingService.ProcessMessageAsync(new RabbitMqMessage(channel, @event), cancellationToken)
-                        .ConfigureAwait(false);
+                        await scopedMessageProcessingService.ProcessMessageAsync(new RabbitMqMessage(channel, @event), cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    LogMessageProcessingError(logger, queue, ex);
+
+                    throw;
                 }
 
                 RabbitMqTelemetry.ProcessDuration.Record(
@@ -64,7 +84,11 @@ namespace Sanyappc.Extensions.RabbitMq
                 if (args.Initiator == ShutdownInitiator.Application)
                     channelClosed.TrySetResult();
                 else
+                {
+                    LogChannelShutdown(logger, args.ReplyText);
+
                     channelClosed.TrySetException(new InvalidOperationException($"Channel shut down unexpectedly: {args.ReplyText}"));
+                }
 
                 return Task.CompletedTask;
             };

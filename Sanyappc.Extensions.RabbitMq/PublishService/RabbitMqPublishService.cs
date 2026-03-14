@@ -13,8 +13,16 @@ namespace Sanyappc.Extensions.RabbitMq
         private readonly ILogger<RabbitMqPublishService> logger = logger;
         private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
 
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Publishing message to queue {Queue}")]
+        private static partial void LogPublish(ILogger logger, string queue);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Sending request to queue {Queue}, awaiting reply")]
+        private static partial void LogRequest(ILogger logger, string queue);
+
         public async Task PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
+            LogPublish(logger, queue);
+
             using Activity? activity = RabbitMqBasicPropertiesExtensions.StartPublishActivity(queue);
 
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
@@ -43,6 +51,8 @@ namespace Sanyappc.Extensions.RabbitMq
         public async Task<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         {
             const string replyTo = "amq.rabbitmq.reply-to";
+
+            LogRequest(logger, queue);
 
             using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue);
 

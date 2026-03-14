@@ -6,7 +6,7 @@ using RabbitMQ.Client;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> logger, IOptions<RabbitMqOptions> options) : IRabbitMqChannelFactory, IAsyncDisposable
+    internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> logger, IOptions<RabbitMqOptions> options) : IRabbitMqChannelFactory, IAsyncDisposable
     {
         private readonly ILogger<RabbitMqChannelFactory> logger = logger;
         private readonly ConnectionFactory connectionFactory = new()
@@ -20,6 +20,12 @@ namespace Sanyappc.Extensions.RabbitMq
         private readonly SemaphoreSlim semaphoreSlim = new(1, 1);
         private volatile IConnection? connection;
 
+        [LoggerMessage(Level = LogLevel.Information, Message = "RabbitMQ connection established to {Hostname}:{Port}")]
+        private static partial void LogConnectionEstablished(ILogger logger, string hostname, int port);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "RabbitMQ connection disposed")]
+        private static partial void LogConnectionDisposed(ILogger logger);
+
         private async ValueTask<IConnection> GetOrCreateConnectionAsync(CancellationToken cancellationToken)
         {
             await semaphoreSlim.WaitAsync(cancellationToken)
@@ -27,8 +33,13 @@ namespace Sanyappc.Extensions.RabbitMq
 
             try
             {
-                connection ??= await connectionFactory.CreateConnectionAsync(cancellationToken)
-                    .ConfigureAwait(false);
+                if (connection is null)
+                {
+                    connection = await connectionFactory.CreateConnectionAsync(cancellationToken)
+                        .ConfigureAwait(false);
+
+                    LogConnectionEstablished(logger, connectionFactory.HostName, connectionFactory.Port);
+                }
 
                 return connection;
             }
@@ -65,6 +76,8 @@ namespace Sanyappc.Extensions.RabbitMq
                         .ConfigureAwait(false);
 
                     connection = null;
+
+                    LogConnectionDisposed(logger);
                 }
             }
             finally
