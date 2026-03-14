@@ -49,13 +49,15 @@ namespace Sanyappc.Extensions.RabbitMq
             }
         }
 
-        public static Activity? StartPublishActivity(string queue) =>
-            ActivitySource.StartActivity($"{queue} publish", ActivityKind.Producer)?
-                .WithMessagingTags(queue, "publish");
+        public static Activity? StartPublishActivity(string queue)
+        {
+            return ActivitySource.StartActivity($"{queue} publish", ActivityKind.Producer)?.WithMessagingTags(queue, "publish");
+        }
 
-        public static Activity? StartRequestActivity(string queue) =>
-            ActivitySource.StartActivity($"{queue} request", ActivityKind.Client)?
-                .WithMessagingTags(queue, "request");
+        public static Activity? StartRequestActivity(string queue)
+        {
+            return ActivitySource.StartActivity($"{queue} request", ActivityKind.Client)?.WithMessagingTags(queue, "request");
+        }
 
         private static Activity WithMessagingTags(this Activity activity, string queue, string operation)
         {

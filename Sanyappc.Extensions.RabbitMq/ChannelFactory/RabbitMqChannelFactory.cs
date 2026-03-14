@@ -83,6 +83,7 @@ namespace Sanyappc.Extensions.RabbitMq
             finally
             {
                 semaphoreSlim.Release();
+                semaphoreSlim.Dispose();
             }
 
             GC.SuppressFinalize(this);

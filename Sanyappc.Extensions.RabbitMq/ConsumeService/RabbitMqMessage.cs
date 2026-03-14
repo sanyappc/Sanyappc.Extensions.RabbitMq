@@ -24,7 +24,7 @@ namespace Sanyappc.Extensions.RabbitMq
 
         public static T DeserializeBody<T>(ReadOnlySpan<byte> message, JsonSerializerOptions? options = null)
         {
-            return JsonSerializer.Deserialize<T>(message, options) ?? throw new NotSupportedException();
+            return JsonSerializer.Deserialize<T>(message, options) ?? throw new InvalidOperationException("Deserialized value is null.");
         }
 
         public static byte[] SerializeBody<T>(T message, JsonSerializerOptions? options = null)

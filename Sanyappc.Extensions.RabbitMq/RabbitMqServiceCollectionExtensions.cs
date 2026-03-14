@@ -16,10 +16,10 @@ namespace Sanyappc.Extensions.RabbitMq
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
+            optionsBuilder.BindConfiguration("RabbitMq");
+
             if (configure is not null)
                 optionsBuilder.Configure(configure);
-
-            optionsBuilder.BindConfiguration("RabbitMq");
 
             services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
 

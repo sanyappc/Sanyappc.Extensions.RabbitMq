@@ -70,11 +70,13 @@ namespace Sanyappc.Extensions.RabbitMq
 
                     throw;
                 }
-
-                RabbitMqTelemetry.ProcessDuration.Record(
-                    Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
-                    new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                    new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                finally
+                {
+                    RabbitMqTelemetry.ProcessDuration.Record(
+                        Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
+                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                        new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                }
             };
 
             TaskCompletionSource channelClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
