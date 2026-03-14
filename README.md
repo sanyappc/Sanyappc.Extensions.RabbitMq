@@ -59,6 +59,40 @@ The delegate takes precedence over configuration. It is useful for overriding sp
 builder.Services.AddRabbitMqService();
 ```
 
+## Multiple brokers
+
+To connect to more than one RabbitMQ broker, use the named overload. Each name registers an independent set of keyed services.
+
+```csharp
+builder.Services.AddRabbitMqService("broker1", o => o.Hostname = "rabbit1");
+builder.Services.AddRabbitMqService("broker2", o => o.Hostname = "rabbit2");
+```
+
+Config binding uses `RabbitMq:{name}` as the section:
+
+```json
+{
+  "RabbitMq": {
+    "broker1": { "Hostname": "rabbit1", "Username": "guest", "Password": "guest" },
+    "broker2": { "Hostname": "rabbit2", "Username": "guest", "Password": "guest" }
+  }
+}
+```
+
+Inject a named publisher using `[FromKeyedServices]`:
+
+```csharp
+public class MyService([FromKeyedServices("broker2")] IRabbitMqPublishService publisher)
+{
+}
+```
+
+Register a named consumer:
+
+```csharp
+builder.Services.AddRabbitMqConsumer<PaymentProcessor>("broker2", "payments");
+```
+
 ## Publishing
 
 Inject `IRabbitMqPublishService` and call `PublishAsync`. Messages are serialized as JSON.

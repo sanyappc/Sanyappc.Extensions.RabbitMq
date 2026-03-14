@@ -1,20 +1,19 @@
 ﻿
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using RabbitMQ.Client;
 
 namespace Sanyappc.Extensions.RabbitMq
 {
-    internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> logger, IOptions<RabbitMqOptions> options) : IRabbitMqChannelFactory, IAsyncDisposable
+    internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> logger, RabbitMqOptions options) : IRabbitMqChannelFactory, IAsyncDisposable
     {
         private readonly ILogger<RabbitMqChannelFactory> logger = logger;
         private readonly ConnectionFactory connectionFactory = new()
         {
-            HostName = options.Value.Hostname,
-            Port = options.Value.Port,
-            UserName = options.Value.Username,
-            Password = options.Value.Password
+            HostName = options.Hostname,
+            Port = options.Port,
+            UserName = options.Username,
+            Password = options.Password
         };
 
         private readonly SemaphoreSlim semaphoreSlim = new(1, 1);
