@@ -51,7 +51,7 @@ services.AddRabbitMqService(options =>
 });
 ```
 
-Configuration always takes precedence over the delegate. The delegate is useful for defaults in tests or environments without a config file.
+The delegate takes precedence over configuration. It is useful for overriding specific values regardless of the config file.
 
 ## Registration
 
