@@ -24,7 +24,7 @@ namespace Sanyappc.Extensions.RabbitMq
         private static partial void LogChannelShutdown(ILogger logger, string reason);
 
         public async Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
-            where T : IRabbitMqMessageProcessingService
+            where T : class, IRabbitMqMessageProcessingService
         {
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
                 .ConfigureAwait(false);

@@ -3,6 +3,6 @@
     public interface IRabbitMqConsumeService
     {
         Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
-            where T : IRabbitMqMessageProcessingService;
+            where T : class, IRabbitMqMessageProcessingService;
     }
 }
