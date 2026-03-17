@@ -5,9 +5,18 @@ namespace Sanyappc.Extensions.RabbitMq
     internal class RabbitMqConsumerHostedService<T>(IRabbitMqConsumeService consumeService, string queue) : BackgroundService
         where T : class, IRabbitMqMessageProcessingService
     {
-        protected override Task ExecuteAsync(CancellationToken stoppingToken)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            return consumeService.ConsumeAsync<T>(queue, stoppingToken);
+            try
+            {
+                await consumeService.ConsumeAsync<T>(queue, stoppingToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception) when (!stoppingToken.IsCancellationRequested)
+            {
+                Environment.ExitCode = 1;
+                throw;
+            }
         }
     }
 }
