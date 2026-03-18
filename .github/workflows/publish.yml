@@ -24,7 +24,10 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build
-        run: dotnet build --configuration Release
+        run: >
+          dotnet build 
+          --configuration Release 
+          -p:Version=${{ steps.version.outputs.version }}
 
       - name: Pack
         run: >

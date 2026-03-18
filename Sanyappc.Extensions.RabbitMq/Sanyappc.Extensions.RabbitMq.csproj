@@ -1,22 +1,24 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Authors>Alexander Mokrov</Authors>
+    <Copyright>Copyright (c) 2026 Alexander Mokrov</Copyright>
+    <Description>.NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, multiple broker connections, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.</Description>
+    <PackageTags>rabbitmq messaging amqp consumer producer request-reply rpc opentelemetry tracing metrics hosted-service dotnet extensions</PackageTags>
     <PackageProjectUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</PackageProjectUrl>
-    <PackageTags>rabbitmq;messaging;amqp;opentelemetry;tracing;metrics</PackageTags>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <IncludeSymbols>True</IncludeSymbols>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\README.md">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
