@@ -148,6 +148,34 @@ builder.Services.AddRabbitMqConsumer<OrderProcessor>("orders");
 builder.Services.AddRabbitMqConsumer<PaymentProcessor>("payments");
 ```
 
+## Request / Reply
+
+For synchronous RPC over RabbitMQ using [Direct Reply-to](https://www.rabbitmq.com/direct-reply-to.html):
+
+**Caller:**
+
+```csharp
+InvoiceResponse invoice = await publisher.RequestAsync<OrderRequest, InvoiceResponse>(
+    "invoices", new OrderRequest { OrderId = 42 }, cancellationToken: ct);
+```
+
+**Handler:**
+
+```csharp
+public class InvoiceProcessor : IRabbitMqMessageProcessingService
+{
+    public async Task ProcessMessageAsync(RabbitMqMessage message, CancellationToken ct)
+    {
+        OrderRequest request = message.GetBody<OrderRequest>();
+
+        InvoiceResponse response = new() { /* ... */ };
+
+        await message.ReplyAsync(response, cancellationToken: ct);
+        await message.AckAsync(ct);
+    }
+}
+```
+
 ## Error handling
 
 All library errors derive from `RabbitMqException`, so you can catch the base type or a specific subtype:
@@ -181,34 +209,6 @@ catch (RabbitMqTimeoutException)
 catch (RabbitMqUnavailableException)
 {
     // broker down — return 503
-}
-```
-
-## Request / Reply
-
-For synchronous RPC over RabbitMQ using [Direct Reply-to](https://www.rabbitmq.com/direct-reply-to.html):
-
-**Caller:**
-
-```csharp
-InvoiceResponse invoice = await publisher.RequestAsync<OrderRequest, InvoiceResponse>(
-    "invoices", new OrderRequest { OrderId = 42 }, cancellationToken: ct);
-```
-
-**Handler:**
-
-```csharp
-public class InvoiceProcessor : IRabbitMqMessageProcessingService
-{
-    public async Task ProcessMessageAsync(RabbitMqMessage message, CancellationToken ct)
-    {
-        OrderRequest request = message.GetBody<OrderRequest>();
-
-        InvoiceResponse response = new() { /* ... */ };
-
-        await message.ReplyAsync(response, cancellationToken: ct);
-        await message.AckAsync(ct);
-    }
 }
 ```
 
