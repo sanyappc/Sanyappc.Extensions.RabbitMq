@@ -2,7 +2,7 @@
 
 [![NuGet](https://img.shields.io/nuget/v/Sanyappc.Extensions.RabbitMq)](https://www.nuget.org/packages/Sanyappc.Extensions.RabbitMq)
 
-A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, multiple broker connections, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.
+A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.
 
 ## Installation
 
@@ -22,12 +22,14 @@ The library binds options from the `RabbitMq` configuration section.
     "Hostname": "localhost",
     "Port": -1,
     "Username": "guest",
-    "Password": "guest"
+    "Password": "guest",
+    "ReplyTimeoutInSeconds": 5
   }
 }
 ```
 
 > `Port: -1` uses the RabbitMQ default port (5672).
+> `ReplyTimeoutInSeconds: -1` disables the timeout (waits indefinitely). Default is `5`.
 
 ### Environment variables
 
@@ -38,6 +40,7 @@ RabbitMq__Hostname=localhost
 RabbitMq__Port=5672
 RabbitMq__Username=guest
 RabbitMq__Password=guest
+RabbitMq__ReplyTimeoutInSeconds=30
 ```
 
 ### Programmatic (code)
@@ -145,6 +148,42 @@ builder.Services.AddRabbitMqConsumer<OrderProcessor>("orders");
 builder.Services.AddRabbitMqConsumer<PaymentProcessor>("payments");
 ```
 
+## Error handling
+
+All library errors derive from `RabbitMqException`, so you can catch the base type or a specific subtype:
+
+| Exception | When thrown |
+|---|---|
+| `RabbitMqUnavailableException` | Broker is unreachable or the channel shuts down unexpectedly |
+| `RabbitMqTimeoutException` | `RequestAsync` did not receive a reply within `ReplyTimeoutInSeconds` |
+
+```csharp
+try
+{
+    await publisher.PublishAsync("orders", order, cancellationToken: ct);
+}
+catch (RabbitMqUnavailableException ex)
+{
+    // broker down — retry, circuit-break, or return 503
+}
+```
+
+```csharp
+try
+{
+    InvoiceResponse invoice = await publisher.RequestAsync<OrderRequest, InvoiceResponse>(
+        "invoices", request, cancellationToken: ct);
+}
+catch (RabbitMqTimeoutException)
+{
+    // no reply within ReplyTimeoutInSeconds — return 504
+}
+catch (RabbitMqUnavailableException)
+{
+    // broker down — return 503
+}
+```
+
 ## Request / Reply
 
 For synchronous RPC over RabbitMQ using [Direct Reply-to](https://www.rabbitmq.com/direct-reply-to.html):
@@ -207,11 +246,12 @@ builder.Services.AddOpenTelemetry()
 
 | Instrument | Type | Unit | When recorded |
 |---|---|---|---|
-| `messaging.publish.messages` | Counter | `{message}` | After each `PublishAsync` |
+| `messaging.publish.messages` | Counter | `{message}` | After each successful `PublishAsync` or `RequestAsync` |
 | `messaging.receive.messages` | Counter | `{message}` | On each message delivery |
 | `messaging.process.duration` | Histogram | `s` | Time spent in `ProcessMessageAsync` |
+| `messaging.client.operation.errors` | Counter | `{message}` | On broker unavailability or request timeout |
 
-All instruments include `messaging.system = "rabbitmq"` and `messaging.destination.name = {queue}` tags.
+All instruments include `messaging.system = "rabbitmq"` and `messaging.destination.name = {queue}` tags. The `messaging.client.operation.errors` counter also includes an `error.type` tag (`broker_unavailable` or `timeout`).
 
 ### Log correlation
 

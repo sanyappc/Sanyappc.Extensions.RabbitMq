@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <Authors>Alexander Mokrov</Authors>
     <Copyright>Copyright (c) 2026 Alexander Mokrov</Copyright>
-    <Description>.NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, multiple broker connections, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.</Description>
+    <Description>A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.</Description>
     <PackageTags>rabbitmq messaging amqp consumer producer request-reply rpc opentelemetry tracing metrics hosted-service dotnet extensions</PackageTags>
     <PackageProjectUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</RepositoryUrl>

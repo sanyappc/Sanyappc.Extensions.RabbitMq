@@ -1,8 +1,7 @@
-﻿namespace Sanyappc.Extensions.RabbitMq
+namespace Sanyappc.Extensions.RabbitMq;
+
+public interface IRabbitMqConsumeService
 {
-    public interface IRabbitMqConsumeService
-    {
-        Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
-            where T : class, IRabbitMqMessageProcessingService;
-    }
+    Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
+        where T : class, IRabbitMqMessageProcessingService;
 }

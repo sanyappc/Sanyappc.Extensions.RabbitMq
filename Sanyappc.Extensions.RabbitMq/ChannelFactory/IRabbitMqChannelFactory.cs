@@ -1,9 +1,8 @@
-﻿using RabbitMQ.Client;
+using RabbitMQ.Client;
 
-namespace Sanyappc.Extensions.RabbitMq
+namespace Sanyappc.Extensions.RabbitMq;
+
+public interface IRabbitMqChannelFactory
 {
-    public interface IRabbitMqChannelFactory
-    {
-        ValueTask<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default);
-    }
+    Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default);
 }

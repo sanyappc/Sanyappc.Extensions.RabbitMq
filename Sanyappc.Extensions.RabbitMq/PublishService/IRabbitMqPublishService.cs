@@ -1,14 +1,13 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
-namespace Sanyappc.Extensions.RabbitMq
+namespace Sanyappc.Extensions.RabbitMq;
+
+public interface IRabbitMqPublishService
 {
-    public interface IRabbitMqPublishService
-    {
-        Task PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default);
+    Task PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default);
 
-        Task PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default);
+    Task PublishAsync<T>(string queue, T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default);
 
-        Task<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
-            where TOut : notnull;
-    }
+    Task<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+        where TOut : notnull;
 }

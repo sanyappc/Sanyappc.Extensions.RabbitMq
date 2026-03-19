@@ -1,7 +1,6 @@
-﻿namespace Sanyappc.Extensions.RabbitMq
+namespace Sanyappc.Extensions.RabbitMq;
+
+public interface IRabbitMqMessageProcessingService
 {
-    public interface IRabbitMqMessageProcessingService
-    {
-        Task ProcessMessageAsync(RabbitMqMessage message, CancellationToken cancellationToken = default);
-    }
+    Task ProcessMessageAsync(RabbitMqMessage message, CancellationToken cancellationToken = default);
 }
