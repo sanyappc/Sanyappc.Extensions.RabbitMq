@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
@@ -97,7 +98,17 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             {
                 try
                 {
-                    replyTaskCompletionSource.TrySetResult(RabbitMqMessage.DeserializeBody<TOut>(@event.Body.Span, options));
+                    if (@event.BasicProperties.Headers?.TryGetValue(RabbitMqRpcMessage.ErrorHeader, out object? errorObj) == true)
+                    {
+                        string error = errorObj is byte[] bytes
+                            ? Encoding.UTF8.GetString(bytes)
+                            : errorObj?.ToString() ?? string.Empty;
+                        replyTaskCompletionSource.TrySetException(new RabbitMqRequestRejectedException(error));
+                    }
+                    else
+                    {
+                        replyTaskCompletionSource.TrySetResult(RabbitMqMessage.DeserializeBody<TOut>(@event.Body.Span, options));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -161,8 +172,9 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
         {
             throw;
         }
-        catch (RabbitMqException)
+        catch (RabbitMqException ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;
         }
         catch (Exception ex)

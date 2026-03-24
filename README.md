@@ -161,20 +161,50 @@ InvoiceResponse invoice = await publisher.RequestAsync<OrderRequest, InvoiceResp
 
 **Handler:**
 
+Implement `IRabbitMqRpcMessageProcessingService`. `ReplyAsync` sends the reply **and** acknowledges the message — no separate `AckAsync` call is needed.
+
 ```csharp
-public class InvoiceProcessor : IRabbitMqMessageProcessingService
+public class InvoiceProcessor : IRabbitMqRpcMessageProcessingService
 {
-    public async Task ProcessMessageAsync(RabbitMqMessage message, CancellationToken ct)
+    public async Task ProcessMessageAsync(RabbitMqRpcMessage message, CancellationToken ct)
     {
         OrderRequest request = message.GetBody<OrderRequest>();
 
         InvoiceResponse response = new() { /* ... */ };
 
         await message.ReplyAsync(response, cancellationToken: ct);
-        await message.AckAsync(ct);
     }
 }
 ```
+
+Register with `AddRabbitMqRpcConsumer`:
+
+```csharp
+builder.Services.AddRabbitMqRpcConsumer<InvoiceProcessor>("invoices");
+```
+
+**Returning an error to the caller:**
+
+Call `ReplyErrorAsync` instead of `ReplyAsync`. It sends the error message back and acknowledges the delivery. The caller receives a `RabbitMqRequestRejectedException`.
+
+```csharp
+public async Task ProcessMessageAsync(RabbitMqRpcMessage message, CancellationToken ct)
+{
+    OrderRequest request = message.GetBody<OrderRequest>();
+
+    if (!IsValid(request))
+    {
+        await message.ReplyErrorAsync("Invalid request", ct);
+        return;
+    }
+
+    await message.ReplyAsync(new InvoiceResponse { /* ... */ }, cancellationToken: ct);
+}
+```
+
+**Fire-and-forget messages on an RPC queue:**
+
+If a message arrives without a `ReplyTo` header (sent fire-and-forget to the same queue), `ReplyAsync` skips the publish and only acknowledges. The handler code does not need to change.
 
 ## Error handling
 
@@ -184,6 +214,7 @@ All library errors derive from `RabbitMqException`, so you can catch the base ty
 |---|---|
 | `RabbitMqUnavailableException` | Broker is unreachable or the channel shuts down unexpectedly |
 | `RabbitMqTimeoutException` | `RequestAsync` did not receive a reply within `ReplyTimeoutInSeconds` |
+| `RabbitMqRequestRejectedException` | `RequestAsync` received an error reply from the handler via `ReplyErrorAsync` |
 
 ```csharp
 try
@@ -201,6 +232,10 @@ try
 {
     InvoiceResponse invoice = await publisher.RequestAsync<OrderRequest, InvoiceResponse>(
         "invoices", request, cancellationToken: ct);
+}
+catch (RabbitMqRequestRejectedException ex)
+{
+    // handler called ReplyErrorAsync — ex.Message contains the error
 }
 catch (RabbitMqTimeoutException)
 {
@@ -232,6 +267,7 @@ Spans follow [OpenTelemetry messaging semantic conventions](https://opentelemetr
 | `PublishAsync` | `{queue} publish` | Producer |
 | `RequestAsync` | `{queue} request` | Client |
 | `ConsumeAsync` | `{queue} receive` | Consumer |
+| `ConsumeRpcAsync` | `{queue} receive` | Consumer |
 
 ### Metrics
 

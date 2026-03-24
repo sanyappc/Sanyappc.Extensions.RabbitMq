@@ -101,4 +101,31 @@ public static class RabbitMqServiceCollectionExtensions
 
         return services;
     }
+
+    public static IServiceCollection AddRabbitMqRpcConsumer<T>(this IServiceCollection services, string queue)
+        where T : class, IRabbitMqRpcMessageProcessingService
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddRabbitMqService();
+        services.TryAddScoped<T>();
+        services.AddHostedService(sp =>
+            new RabbitMqRpcConsumerHostedService<T>(sp.GetRequiredService<IRabbitMqConsumeService>(), queue));
+
+        return services;
+    }
+
+    public static IServiceCollection AddRabbitMqRpcConsumer<T>(this IServiceCollection services, string name, string queue)
+        where T : class, IRabbitMqRpcMessageProcessingService
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(name);
+
+        services.AddRabbitMqService(name);
+        services.TryAddScoped<T>();
+        services.AddHostedService(sp =>
+            new RabbitMqRpcConsumerHostedService<T>(sp.GetRequiredKeyedService<IRabbitMqConsumeService>(name), queue));
+
+        return services;
+    }
 }

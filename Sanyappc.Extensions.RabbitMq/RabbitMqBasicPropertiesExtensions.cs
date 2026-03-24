@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 using RabbitMQ.Client;
 
@@ -42,7 +43,7 @@ internal static class RabbitMqBasicPropertiesExtensions
 
             IReadOnlyBasicProperties basicProperties = carrier as IReadOnlyBasicProperties ?? throw new InvalidOperationException();
             if (basicProperties.Headers is not null && basicProperties.Headers.TryGetValue(name, out object? objectValue))
-                value = $"{objectValue}";
+                value = objectValue is byte[] bytes ? Encoding.UTF8.GetString(bytes) : objectValue?.ToString();
             else
                 value = null;
         }

@@ -26,6 +26,15 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
     [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming from queue {Queue}")]
     private static partial void LogConsumeFailed(ILogger logger, string queue, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Received RPC message from queue {Queue}")]
+    private static partial void LogRpcMessageReceived(ILogger logger, string queue);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error processing RPC message from queue {Queue}")]
+    private static partial void LogRpcMessageProcessingError(ILogger logger, string queue, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming RPC from queue {Queue}")]
+    private static partial void LogRpcConsumeFailed(ILogger logger, string queue, Exception exception);
+
     public async Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
         where T : class, IRabbitMqMessageProcessingService
     {
@@ -68,6 +77,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                     LogMessageProcessingError(logger, queue, ex);
 
                     throw;
@@ -121,6 +131,118 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
             throw new RabbitMqUnavailableException(
                 $"RabbitMQ broker is unavailable while consuming from queue '{queue}'.", ex);
+        }
+    }
+
+    public async Task ConsumeRpcAsync<T>(string queue, CancellationToken cancellationToken = default)
+        where T : class, IRabbitMqRpcMessageProcessingService
+    {
+        try
+        {
+            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            AsyncEventingBasicConsumer consumer = new(channel);
+            consumer.ReceivedAsync += async (_, @event) =>
+            {
+                using Activity? activity = @event.BasicProperties.StartReceiveActivity(queue);
+                using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
+                {
+                    ["Queue"] = queue,
+                    ["MessageId"] = @event.BasicProperties.MessageId,
+                    ["DeliveryTag"] = @event.DeliveryTag,
+                    ["TraceId"] = activity?.TraceId.ToString(),
+                    ["SpanId"] = activity?.SpanId.ToString(),
+                });
+
+                LogRpcMessageReceived(logger, queue);
+
+                RabbitMqTelemetry.ReceivedMessages.Add(1,
+                    new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                    new KeyValuePair<string, object?>("messaging.destination.name", queue));
+
+                RabbitMqRpcMessage rpcMessage = new(channel, @event);
+                long startTimestamp = Stopwatch.GetTimestamp();
+
+                try
+                {
+                    await using AsyncServiceScope serviceScope = serviceScopeFactory.CreateAsyncScope();
+                    T scopedMessageProcessingService = serviceScope.ServiceProvider.GetRequiredService<T>();
+
+                    await scopedMessageProcessingService.ProcessMessageAsync(rpcMessage, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    LogRpcMessageProcessingError(logger, queue, ex);
+
+                    if (!rpcMessage.Acknowledged)
+                    {
+                        try
+                        {
+                            await rpcMessage.ReplyErrorAsync(ex.Message, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            // best effort — original exception is the one that matters
+                        }
+                    }
+
+                    throw;
+                }
+                finally
+                {
+                    RabbitMqTelemetry.ProcessDuration.Record(
+                        Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
+                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                        new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                }
+            };
+
+            TaskCompletionSource channelClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            channel.ChannelShutdownAsync += (_, args) =>
+            {
+                if (args.Initiator == ShutdownInitiator.Application)
+                    channelClosed.TrySetResult();
+                else
+                {
+                    LogChannelShutdown(logger, args.ReplyText);
+
+                    channelClosed.TrySetException(new RabbitMqUnavailableException(
+                        $"RabbitMQ channel shut down unexpectedly while consuming RPC from queue '{queue}': {args.ReplyText}"));
+                }
+
+                return Task.CompletedTask;
+            };
+
+            await channel.BasicConsumeAsync(queue, false, consumer, cancellationToken)
+               .ConfigureAwait(false);
+
+            await channelClosed.Task.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (RabbitMqException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogRpcConsumeFailed(logger, queue, ex);
+            RabbitMqTelemetry.FailedMessages.Add(1,
+                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                new KeyValuePair<string, object?>("messaging.destination.name", queue),
+                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
+            throw new RabbitMqUnavailableException(
+                $"RabbitMQ broker is unavailable while consuming RPC from queue '{queue}'.", ex);
         }
     }
 }
