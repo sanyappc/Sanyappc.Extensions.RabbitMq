@@ -47,6 +47,15 @@ internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> lo
         }
     }
 
+    public async Task CheckAsync(CancellationToken cancellationToken = default)
+    {
+        IConnection connection = await GetOrCreateConnectionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        using IChannel channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default)
     {
         IConnection connection = await GetOrCreateConnectionAsync(cancellationToken)

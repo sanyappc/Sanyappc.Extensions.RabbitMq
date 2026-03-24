@@ -2,7 +2,7 @@
 
 [![NuGet](https://img.shields.io/nuget/v/Sanyappc.Extensions.RabbitMq)](https://www.nuget.org/packages/Sanyappc.Extensions.RabbitMq)
 
-A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.
+A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.
 
 ## Installation
 
@@ -139,7 +139,7 @@ Register the consumer in DI. This starts a hosted service that runs for the life
 builder.Services.AddRabbitMqConsumer<OrderProcessor>("orders");
 ```
 
-`AddRabbitMqConsumer` also calls `AddRabbitMqService` internally, so the explicit call is optional when using only consumers.
+`AddRabbitMqConsumer` and `AddRabbitMqRpcConsumer` both call `AddRabbitMqService` internally, so the explicit call is optional when using only consumers.
 
 Multiple queues:
 
@@ -205,6 +205,32 @@ public async Task ProcessMessageAsync(RabbitMqRpcMessage message, CancellationTo
 **Fire-and-forget messages on an RPC queue:**
 
 If a message arrives without a `ReplyTo` header (sent fire-and-forget to the same queue), `ReplyAsync` skips the publish and only acknowledges. The handler code does not need to change.
+
+## Health checks
+
+Register a health check that verifies broker connectivity by opening a channel. Requires `AddRabbitMqService()` to have been called first (or `AddRabbitMqConsumer` / `AddRabbitMqRpcConsumer`, which call it internally):
+
+```csharp
+builder.Services.AddRabbitMqService();
+
+builder.Services.AddHealthChecks()
+    .AddRabbitMq();
+```
+
+For a named connection, pass the connection name. The health check name defaults to `rabbitmq:{connectionName}`:
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddRabbitMq("broker1")
+    .AddRabbitMq("broker2");
+```
+
+Override the health check name with the second parameter:
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddRabbitMq("broker1", name: "primary-broker");
+```
 
 ## Error handling
 
