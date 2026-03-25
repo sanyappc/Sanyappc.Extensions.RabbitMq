@@ -152,11 +152,17 @@ builder.Services.AddRabbitMqConsumer<PaymentProcessor>("payments");
 
 For synchronous RPC over RabbitMQ using [Direct Reply-to](https://www.rabbitmq.com/direct-reply-to.html):
 
-**Caller:**
+**Caller — with response body:**
 
 ```csharp
 InvoiceResponse invoice = await publisher.RequestAsync<OrderRequest, InvoiceResponse>(
     "invoices", new OrderRequest { OrderId = 42 }, cancellationToken: ct);
+```
+
+**Caller — no response body (acknowledgement only):**
+
+```csharp
+await publisher.RequestAsync<DispatchCommand>("dispatch", new DispatchCommand { OrderId = 42 }, cancellationToken: ct);
 ```
 
 **Handler:**
@@ -175,6 +181,12 @@ public class InvoiceProcessor : IRabbitMqRpcMessageProcessingService
         await message.ReplyAsync(response, cancellationToken: ct);
     }
 }
+```
+
+To reply with no body (acknowledgement only), call the parameterless overload:
+
+```csharp
+await message.ReplyAsync(ct);
 ```
 
 Register with `AddRabbitMqRpcConsumer`:

@@ -79,6 +79,116 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
         return PublishAsync(queue, RabbitMqMessage.SerializeBody(body, options), cancellationToken);
     }
 
+    public async Task RequestAsync<TIn>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        LogRequest(logger, queue);
+
+        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue);
+
+        try
+        {
+            using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            TaskCompletionSource replyTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            AsyncEventingBasicConsumer consumer = new(channel);
+            consumer.ReceivedAsync += (_, @event) =>
+            {
+                try
+                {
+                    if (@event.BasicProperties.Headers?.TryGetValue(RabbitMqRpcMessage.ErrorHeader, out object? errorObj) == true)
+                    {
+                        string error = errorObj is byte[] bytes
+                            ? Encoding.UTF8.GetString(bytes)
+                            : errorObj?.ToString() ?? string.Empty;
+                        replyTaskCompletionSource.TrySetException(new RabbitMqRequestRejectedException(error));
+                    }
+                    else
+                    {
+                        replyTaskCompletionSource.TrySetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    replyTaskCompletionSource.TrySetException(ex);
+                }
+
+                return Task.CompletedTask;
+            };
+
+            await channel.BasicConsumeAsync(replyToQueue, true, consumer, cancellationToken)
+                .ConfigureAwait(false);
+
+            await channel.QueueDeclareAsync(queue, true, false, false, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            BasicProperties properties = new();
+            properties.Inject(Activity.Current);
+            properties.ReplyTo = replyToQueue;
+
+            await channel.BasicPublishAsync(string.Empty, queue, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
+                .ConfigureAwait(false);
+
+            RabbitMqTelemetry.PublishedMessages.Add(1,
+                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                new KeyValuePair<string, object?>("messaging.destination.name", queue));
+
+            int replyTimeoutInSeconds = rabbitMqOptions.Value.ReplyTimeoutInSeconds;
+            if (replyTimeoutInSeconds != Timeout.Infinite)
+            {
+                using CancellationTokenSource timeoutCancellationTokenSource = new();
+                timeoutCancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(replyTimeoutInSeconds));
+
+                using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    timeoutCancellationTokenSource.Token);
+
+                try
+                {
+                    await replyTaskCompletionSource.Task.WaitAsync(linkedCancellationTokenSource.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex) when (ex.CancellationToken == timeoutCancellationTokenSource.Token)
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, "Request timed out.");
+                    LogRequestTimedOut(logger, queue, replyTimeoutInSeconds);
+                    RabbitMqTelemetry.FailedMessages.Add(1,
+                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                        new KeyValuePair<string, object?>("messaging.destination.name", queue),
+                        new KeyValuePair<string, object?>("error.type", "timeout"));
+                    throw new RabbitMqTimeoutException(
+                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeoutInSeconds} seconds.");
+                }
+            }
+            else
+            {
+                await replyTaskCompletionSource.Task.WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (RabbitMqException ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            LogRequestFailed(logger, queue, ex);
+            RabbitMqTelemetry.FailedMessages.Add(1,
+                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
+                new KeyValuePair<string, object?>("messaging.destination.name", queue),
+                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
+            throw new RabbitMqUnavailableException(
+                $"RabbitMQ broker is unavailable during a request to queue '{queue}'.", ex);
+        }
+    }
+
     public async Task<TOut> RequestAsync<TIn, TOut>(string queue, TIn body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
         where TOut : notnull
     {
@@ -138,10 +248,10 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             int replyTimeoutInSeconds = rabbitMqOptions.Value.ReplyTimeoutInSeconds;
             if (replyTimeoutInSeconds != Timeout.Infinite)
             {
-                using CancellationTokenSource? timeoutCancellationTokenSource = new();
+                using CancellationTokenSource timeoutCancellationTokenSource = new();
                 timeoutCancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(replyTimeoutInSeconds));
 
-                using CancellationTokenSource? linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+                using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken,
                     timeoutCancellationTokenSource.Token);
 

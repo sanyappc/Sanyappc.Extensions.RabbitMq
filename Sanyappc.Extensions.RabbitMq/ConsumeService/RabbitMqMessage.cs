@@ -5,7 +5,7 @@ using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq;
 
-public record RabbitMqMessage
+public class RabbitMqMessage
 {
     internal RabbitMqMessage(IChannel channel, BasicDeliverEventArgs @event)
     {
@@ -13,7 +13,7 @@ public record RabbitMqMessage
         Event = @event;
     }
 
-    public IChannel Channel { get; }
+    internal IChannel Channel { get; }
 
     public BasicDeliverEventArgs Event { get; }
 
@@ -21,6 +21,16 @@ public record RabbitMqMessage
         where T : notnull
     {
         return DeserializeBody<T>(Event.Body.Span, options);
+    }
+
+    public Task AckAsync(CancellationToken cancellationToken = default)
+    {
+        return Channel.BasicAckAsync(Event.DeliveryTag, false, cancellationToken).AsTask();
+    }
+
+    public Task RejectAsync(bool requeue, CancellationToken cancellationToken = default)
+    {
+        return Channel.BasicRejectAsync(Event.DeliveryTag, requeue, cancellationToken).AsTask();
     }
 
     public static T DeserializeBody<T>(ReadOnlySpan<byte> message, JsonSerializerOptions? options = null)

@@ -50,6 +50,11 @@ public class RabbitMqRpcMessage
         Acknowledged = true;
     }
 
+    public Task ReplyAsync(CancellationToken cancellationToken = default)
+    {
+        return ReplyAsync(ReadOnlyMemory<byte>.Empty, cancellationToken);
+    }
+
     public Task ReplyAsync<T>(T body, JsonSerializerOptions? options = null, CancellationToken cancellationToken = default)
     {
         return ReplyAsync(RabbitMqMessage.SerializeBody(body, options), cancellationToken);
