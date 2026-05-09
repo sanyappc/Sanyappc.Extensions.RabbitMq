@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 
 using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq;
 
@@ -11,29 +12,31 @@ internal static class RabbitMqBasicPropertiesExtensions
 
     private static readonly DistributedContextPropagator distributedContextPropagator = DistributedContextPropagator.CreateDefaultPropagator();
 
-    public static Activity? StartReceiveActivity(this IReadOnlyBasicProperties properties, string queue)
+    public static Activity? StartProcessActivity(this BasicDeliverEventArgs @event, string queue, string serverAddress, int serverPort)
     {
-        distributedContextPropagator.ExtractTraceIdAndState(properties, getter, out string? traceId, out string? traceState);
+        IReadOnlyBasicProperties properties = @event.BasicProperties;
 
+        distributedContextPropagator.ExtractTraceIdAndState(properties, getter, out string? traceId, out string? traceState);
         ActivityContext.TryParse(traceId, traceState, isRemote: true, out ActivityContext parentContext);
 
-        Activity? activity = ActivitySource.StartActivity($"{queue} receive", ActivityKind.Consumer, parentContext);
-
-        if (activity is null)
-            return null;
-
-        if (traceState is not null)
-            activity.TraceStateString = traceState;
-
-        activity.SetTag("messaging.system", "rabbitmq");
-        activity.SetTag("messaging.destination.name", queue);
-        activity.SetTag("messaging.operation.name", "receive");
-
-        if (properties.CorrelationId is not null)
-            activity.SetTag("messaging.message.conversation_id", properties.CorrelationId);
+        TagList tags = RabbitMqTelemetry.BuildTags(queue, RabbitMqTelemetry.ProcessOperation, serverAddress, serverPort);
+        tags.Add(RabbitMqTelemetry.DeliveryTagTag, @event.DeliveryTag);
+        tags.Add(RabbitMqTelemetry.MessageBodySizeTag, @event.Body.Length);
 
         if (properties.MessageId is not null)
-            activity.SetTag("messaging.message.id", properties.MessageId);
+            tags.Add(RabbitMqTelemetry.MessageIdTag, properties.MessageId);
+
+        if (properties.CorrelationId is not null)
+            tags.Add(RabbitMqTelemetry.ConversationIdTag, properties.CorrelationId);
+
+        Activity? activity = ActivitySource.StartActivity(
+            $"{RabbitMqTelemetry.ProcessOperation} {queue}",
+            ActivityKind.Consumer,
+            parentContext,
+            tags);
+
+        if (activity is not null && traceState is not null)
+            activity.TraceStateString = traceState;
 
         return activity;
 
@@ -49,22 +52,38 @@ internal static class RabbitMqBasicPropertiesExtensions
         }
     }
 
-    public static Activity? StartPublishActivity(string queue)
+    public static Activity? StartPublishActivity(string queue, string serverAddress, int serverPort, int bodySize)
     {
-        return ActivitySource.StartActivity($"{queue} publish", ActivityKind.Producer)?.WithMessagingTags(queue, "publish");
+        TagList tags = RabbitMqTelemetry.BuildTags(queue, RabbitMqTelemetry.SendOperation, serverAddress, serverPort);
+        tags.Add(RabbitMqTelemetry.MessageBodySizeTag, bodySize);
+
+        return ActivitySource.StartActivity(
+            $"{RabbitMqTelemetry.SendOperation} {queue}",
+            ActivityKind.Producer,
+            default(ActivityContext),
+            tags);
     }
 
-    public static Activity? StartRequestActivity(string queue)
+    public static Activity? StartRequestActivity(string queue, string serverAddress, int serverPort, int bodySize)
     {
-        return ActivitySource.StartActivity($"{queue} request", ActivityKind.Client)?.WithMessagingTags(queue, "request");
+        TagList tags = RabbitMqTelemetry.BuildTags(queue, RabbitMqTelemetry.SendOperation, serverAddress, serverPort);
+        tags.Add(RabbitMqTelemetry.MessageBodySizeTag, bodySize);
+
+        return ActivitySource.StartActivity(
+            $"{RabbitMqTelemetry.SendOperation} {queue}",
+            ActivityKind.Client,
+            default(ActivityContext),
+            tags);
     }
 
-    private static Activity WithMessagingTags(this Activity activity, string queue, string operation)
+    public static void SetError(this Activity? activity, Exception exception, string errorType)
     {
-        activity.SetTag("messaging.system", "rabbitmq");
-        activity.SetTag("messaging.destination.name", queue);
-        activity.SetTag("messaging.operation.name", operation);
-        return activity;
+        if (activity is null)
+            return;
+
+        activity.SetStatus(ActivityStatusCode.Error, exception.Message);
+        activity.SetTag(RabbitMqTelemetry.ErrorTypeTag, errorType);
+        activity.AddException(exception);
     }
 
     public static IBasicProperties Inject(this IBasicProperties properties, Activity? activity)

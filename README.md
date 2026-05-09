@@ -300,12 +300,14 @@ builder.Services.AddOpenTelemetry()
 
 Spans follow [OpenTelemetry messaging semantic conventions](https://opentelemetry.io/docs/specs/semconv/messaging/):
 
-| Operation | Span name | Kind |
-|---|---|---|
-| `PublishAsync` | `{queue} publish` | Producer |
-| `RequestAsync` | `{queue} request` | Client |
-| `ConsumeAsync` | `{queue} receive` | Consumer |
-| `ConsumeRpcAsync` | `{queue} receive` | Consumer |
+| Operation | Span name | Kind | `messaging.operation.type` |
+|---|---|---|---|
+| `PublishAsync` | `send {queue}` | Producer | `send` |
+| `RequestAsync` | `send {queue}` | Client | `send` |
+| `ConsumeAsync` | `process {queue}` | Consumer | `process` |
+| `ConsumeRpcAsync` | `process {queue}` | Consumer | `process` |
+
+Each span carries the messaging attributes (`messaging.system`, `messaging.destination.name`, `messaging.operation.name`, `messaging.operation.type`, `messaging.rabbitmq.destination.routing_key`, `server.address`, `server.port`, `messaging.message.body.size`) plus `messaging.rabbitmq.message.delivery_tag`, `messaging.message.id`, and `messaging.message.conversation_id` on the consumer side when available. All sampling-relevant attributes are set at activity creation time. On failure, the span sets `error.type`, records the exception via `Activity.AddException`, and sets the status to `Error`.
 
 ### Metrics
 
@@ -320,12 +322,12 @@ builder.Services.AddOpenTelemetry()
 
 | Instrument | Type | Unit | When recorded |
 |---|---|---|---|
-| `messaging.publish.messages` | Counter | `{message}` | After each successful `PublishAsync` or `RequestAsync` |
-| `messaging.receive.messages` | Counter | `{message}` | On each message delivery |
-| `messaging.process.duration` | Histogram | `s` | Time spent in `ProcessMessageAsync` |
-| `messaging.client.operation.errors` | Counter | `{message}` | On broker unavailability or request timeout |
+| `messaging.client.sent.messages` | Counter | `{message}` | Once per attempted `PublishAsync` or `RequestAsync` (success or failure) |
+| `messaging.client.consumed.messages` | Counter | `{message}` | On each delivered message |
+| `messaging.client.operation.duration` | Histogram | `s` | Per `PublishAsync` / `RequestAsync` call (success or failure) |
+| `messaging.process.duration` | Histogram | `s` | Per invocation of `ProcessMessageAsync` |
 
-All instruments include `messaging.system = "rabbitmq"` and `messaging.destination.name = {queue}` tags. The `messaging.client.operation.errors` counter also includes an `error.type` tag (`broker_unavailable` or `timeout`).
+Every instrument includes `messaging.system`, `messaging.destination.name`, `messaging.operation.name`, `messaging.operation.type`, `messaging.rabbitmq.destination.routing_key`, `server.address`, and `server.port`. Failed operations additionally set `error.type` to one of `timeout`, `request_rejected`, `broker_unavailable`, or the fully qualified exception type for unexpected errors.
 
 ### Log correlation
 

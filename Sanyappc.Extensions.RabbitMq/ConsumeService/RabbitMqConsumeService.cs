@@ -38,6 +38,9 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
     public async Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
         where T : class, IRabbitMqMessageProcessingService
     {
+        string serverAddress = rabbitMqChannelFactory.ServerAddress;
+        int serverPort = rabbitMqChannelFactory.ServerPort;
+
         try
         {
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
@@ -49,7 +52,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
             AsyncEventingBasicConsumer consumer = new(channel);
             consumer.ReceivedAsync += async (_, @event) =>
             {
-                using Activity? activity = @event.BasicProperties.StartReceiveActivity(queue);
+                using Activity? activity = @event.StartProcessActivity(queue, serverAddress, serverPort);
                 using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
                 {
                     ["Queue"] = queue,
@@ -61,11 +64,10 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
 
                 LogMessageReceived(logger, queue);
 
-                RabbitMqTelemetry.ReceivedMessages.Add(1,
-                    new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                    new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                RabbitMqTelemetry.IncrementConsumed(queue, serverAddress, serverPort);
 
                 long startTimestamp = Stopwatch.GetTimestamp();
+                string? errorType = null;
 
                 try
                 {
@@ -77,17 +79,15 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    errorType = RabbitMqTelemetry.GetErrorType(ex);
+                    activity.SetError(ex, errorType);
                     LogMessageProcessingError(logger, queue, ex);
 
                     throw;
                 }
                 finally
                 {
-                    RabbitMqTelemetry.ProcessDuration.Record(
-                        Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
-                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                        new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                    RabbitMqTelemetry.RecordProcessDuration(queue, serverAddress, serverPort, startTimestamp, errorType);
                 }
             };
 
@@ -125,10 +125,6 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
         catch (Exception ex)
         {
             LogConsumeFailed(logger, queue, ex);
-            RabbitMqTelemetry.FailedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
             throw new RabbitMqUnavailableException(
                 $"RabbitMQ broker is unavailable while consuming from queue '{queue}'.", ex);
         }
@@ -137,6 +133,9 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
     public async Task ConsumeRpcAsync<T>(string queue, CancellationToken cancellationToken = default)
         where T : class, IRabbitMqRpcMessageProcessingService
     {
+        string serverAddress = rabbitMqChannelFactory.ServerAddress;
+        int serverPort = rabbitMqChannelFactory.ServerPort;
+
         try
         {
             using IChannel channel = await rabbitMqChannelFactory.CreateChannelAsync(cancellationToken)
@@ -148,7 +147,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
             AsyncEventingBasicConsumer consumer = new(channel);
             consumer.ReceivedAsync += async (_, @event) =>
             {
-                using Activity? activity = @event.BasicProperties.StartReceiveActivity(queue);
+                using Activity? activity = @event.StartProcessActivity(queue, serverAddress, serverPort);
                 using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
                 {
                     ["Queue"] = queue,
@@ -160,12 +159,11 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
 
                 LogRpcMessageReceived(logger, queue);
 
-                RabbitMqTelemetry.ReceivedMessages.Add(1,
-                    new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                    new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                RabbitMqTelemetry.IncrementConsumed(queue, serverAddress, serverPort);
 
                 RabbitMqRpcMessage rpcMessage = new(channel, @event);
                 long startTimestamp = Stopwatch.GetTimestamp();
+                string? errorType = null;
 
                 try
                 {
@@ -177,7 +175,8 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    errorType = RabbitMqTelemetry.GetErrorType(ex);
+                    activity.SetError(ex, errorType);
                     LogRpcMessageProcessingError(logger, queue, ex);
 
                     if (!rpcMessage.Acknowledged)
@@ -196,10 +195,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 }
                 finally
                 {
-                    RabbitMqTelemetry.ProcessDuration.Record(
-                        Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
-                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                        new KeyValuePair<string, object?>("messaging.destination.name", queue));
+                    RabbitMqTelemetry.RecordProcessDuration(queue, serverAddress, serverPort, startTimestamp, errorType);
                 }
             };
 
@@ -237,10 +233,6 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
         catch (Exception ex)
         {
             LogRpcConsumeFailed(logger, queue, ex);
-            RabbitMqTelemetry.FailedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
             throw new RabbitMqUnavailableException(
                 $"RabbitMQ broker is unavailable while consuming RPC from queue '{queue}'.", ex);
         }

@@ -6,6 +6,8 @@ namespace Sanyappc.Extensions.RabbitMq;
 
 internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> logger, RabbitMqOptions options) : IRabbitMqChannelFactory, IAsyncDisposable
 {
+    private const int defaultAmqpPort = 5672;
+
     private readonly ILogger<RabbitMqChannelFactory> logger = logger;
     private readonly ConnectionFactory connectionFactory = new()
     {
@@ -17,6 +19,10 @@ internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> lo
 
     private readonly SemaphoreSlim semaphoreSlim = new(1, 1);
     private IConnection? connection;
+
+    public string ServerAddress => connectionFactory.HostName;
+
+    public int ServerPort => connectionFactory.Port == -1 ? defaultAmqpPort : connectionFactory.Port;
 
     [LoggerMessage(Level = LogLevel.Information, Message = "RabbitMQ connection established to {Hostname}:{Port}")]
     private static partial void LogConnectionEstablished(ILogger logger, string hostname, int port);

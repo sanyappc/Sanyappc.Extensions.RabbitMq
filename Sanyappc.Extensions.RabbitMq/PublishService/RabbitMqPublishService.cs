@@ -37,7 +37,13 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
     {
         LogPublish(logger, queue);
 
-        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartPublishActivity(queue);
+        string serverAddress = rabbitMqChannelFactory.ServerAddress;
+        int serverPort = rabbitMqChannelFactory.ServerPort;
+
+        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartPublishActivity(queue, serverAddress, serverPort, body.Length);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        string? errorType = null;
+        bool publishAttempted = false;
 
         try
         {
@@ -50,12 +56,9 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             BasicProperties properties = new();
             properties.Inject(Activity.Current);
 
+            publishAttempted = true;
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, body, cancellationToken)
                 .ConfigureAwait(false);
-
-            RabbitMqTelemetry.PublishedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -63,14 +66,18 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
         }
         catch (Exception ex)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            errorType = RabbitMqTelemetry.BrokerUnavailableError;
+            activity.SetError(ex, errorType);
             LogPublishFailed(logger, queue, ex);
-            RabbitMqTelemetry.FailedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
             throw new RabbitMqUnavailableException(
                 $"RabbitMQ broker is unavailable while publishing to queue '{queue}'.", ex);
+        }
+        finally
+        {
+            if (publishAttempted)
+                RabbitMqTelemetry.IncrementSent(queue, serverAddress, serverPort, errorType);
+
+            RabbitMqTelemetry.RecordSendDuration(queue, serverAddress, serverPort, startTimestamp, errorType);
         }
     }
 
@@ -83,7 +90,15 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
     {
         LogRequest(logger, queue);
 
-        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue);
+        byte[] serializedBody = RabbitMqMessage.SerializeBody(body, options);
+
+        string serverAddress = rabbitMqChannelFactory.ServerAddress;
+        int serverPort = rabbitMqChannelFactory.ServerPort;
+
+        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue, serverAddress, serverPort, serializedBody.Length);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        string? errorType = null;
+        bool publishAttempted = false;
 
         try
         {
@@ -127,12 +142,9 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             properties.Inject(Activity.Current);
             properties.ReplyTo = replyToQueue;
 
-            await channel.BasicPublishAsync(string.Empty, queue, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
+            publishAttempted = true;
+            await channel.BasicPublishAsync(string.Empty, queue, false, properties, serializedBody, cancellationToken)
                 .ConfigureAwait(false);
-
-            RabbitMqTelemetry.PublishedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue));
 
             int replyTimeoutInSeconds = rabbitMqOptions.Value.ReplyTimeoutInSeconds;
             if (replyTimeoutInSeconds != Timeout.Infinite)
@@ -151,12 +163,7 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
                 }
                 catch (OperationCanceledException ex) when (ex.CancellationToken == timeoutCancellationTokenSource.Token)
                 {
-                    activity?.SetStatus(ActivityStatusCode.Error, "Request timed out.");
                     LogRequestTimedOut(logger, queue, replyTimeoutInSeconds);
-                    RabbitMqTelemetry.FailedMessages.Add(1,
-                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                        new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                        new KeyValuePair<string, object?>("error.type", "timeout"));
                     throw new RabbitMqTimeoutException(
                         $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeoutInSeconds} seconds.");
                 }
@@ -173,19 +180,24 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
         }
         catch (RabbitMqException ex)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            errorType = RabbitMqTelemetry.GetErrorType(ex);
+            activity.SetError(ex, errorType);
             throw;
         }
         catch (Exception ex)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            errorType = RabbitMqTelemetry.BrokerUnavailableError;
+            activity.SetError(ex, errorType);
             LogRequestFailed(logger, queue, ex);
-            RabbitMqTelemetry.FailedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
             throw new RabbitMqUnavailableException(
                 $"RabbitMQ broker is unavailable during a request to queue '{queue}'.", ex);
+        }
+        finally
+        {
+            if (publishAttempted)
+                RabbitMqTelemetry.IncrementSent(queue, serverAddress, serverPort, errorType);
+
+            RabbitMqTelemetry.RecordSendDuration(queue, serverAddress, serverPort, startTimestamp, errorType);
         }
     }
 
@@ -194,7 +206,15 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
     {
         LogRequest(logger, queue);
 
-        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue);
+        byte[] serializedBody = RabbitMqMessage.SerializeBody(body, options);
+
+        string serverAddress = rabbitMqChannelFactory.ServerAddress;
+        int serverPort = rabbitMqChannelFactory.ServerPort;
+
+        using Activity? activity = RabbitMqBasicPropertiesExtensions.StartRequestActivity(queue, serverAddress, serverPort, serializedBody.Length);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        string? errorType = null;
+        bool publishAttempted = false;
 
         try
         {
@@ -238,12 +258,9 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             properties.Inject(Activity.Current);
             properties.ReplyTo = replyToQueue;
 
-            await channel.BasicPublishAsync(string.Empty, queue, false, properties, RabbitMqMessage.SerializeBody(body, options), cancellationToken)
+            publishAttempted = true;
+            await channel.BasicPublishAsync(string.Empty, queue, false, properties, serializedBody, cancellationToken)
                 .ConfigureAwait(false);
-
-            RabbitMqTelemetry.PublishedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue));
 
             int replyTimeoutInSeconds = rabbitMqOptions.Value.ReplyTimeoutInSeconds;
             if (replyTimeoutInSeconds != Timeout.Infinite)
@@ -262,12 +279,7 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
                 }
                 catch (OperationCanceledException ex) when (ex.CancellationToken == timeoutCancellationTokenSource.Token)
                 {
-                    activity?.SetStatus(ActivityStatusCode.Error, "Request timed out.");
                     LogRequestTimedOut(logger, queue, replyTimeoutInSeconds);
-                    RabbitMqTelemetry.FailedMessages.Add(1,
-                        new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                        new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                        new KeyValuePair<string, object?>("error.type", "timeout"));
                     throw new RabbitMqTimeoutException(
                         $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeoutInSeconds} seconds.");
                 }
@@ -284,19 +296,24 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
         }
         catch (RabbitMqException ex)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            errorType = RabbitMqTelemetry.GetErrorType(ex);
+            activity.SetError(ex, errorType);
             throw;
         }
         catch (Exception ex)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            errorType = RabbitMqTelemetry.BrokerUnavailableError;
+            activity.SetError(ex, errorType);
             LogRequestFailed(logger, queue, ex);
-            RabbitMqTelemetry.FailedMessages.Add(1,
-                new KeyValuePair<string, object?>("messaging.system", "rabbitmq"),
-                new KeyValuePair<string, object?>("messaging.destination.name", queue),
-                new KeyValuePair<string, object?>("error.type", "broker_unavailable"));
             throw new RabbitMqUnavailableException(
                 $"RabbitMQ broker is unavailable during a request to queue '{queue}'.", ex);
+        }
+        finally
+        {
+            if (publishAttempted)
+                RabbitMqTelemetry.IncrementSent(queue, serverAddress, serverPort, errorType);
+
+            RabbitMqTelemetry.RecordSendDuration(queue, serverAddress, serverPort, startTimestamp, errorType);
         }
     }
 }
