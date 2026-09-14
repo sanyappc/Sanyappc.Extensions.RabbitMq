@@ -10,6 +10,11 @@ public static class RabbitMqTelemetry
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
         ?.InformationalVersion;
 
+    private static readonly InstrumentAdvice<double> durationAdvice = new()
+    {
+        HistogramBucketBoundaries = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+    };
+
     internal const string SystemValue = "rabbitmq";
 
     internal const string SystemTag = "messaging.system";
@@ -43,10 +48,10 @@ public static class RabbitMqTelemetry
         Meter.CreateCounter<long>("messaging.client.consumed.messages", "{message}", "Number of messages that were delivered to the application.");
 
     internal static readonly Histogram<double> ProcessDuration =
-        Meter.CreateHistogram<double>("messaging.process.duration", "s", "Duration of message processing.");
+        Meter.CreateHistogram<double>("messaging.process.duration", "s", "Duration of message processing.", advice: durationAdvice);
 
     internal static readonly Histogram<double> OperationDuration =
-        Meter.CreateHistogram<double>("messaging.client.operation.duration", "s", "Duration of messaging operation initiated by a producer or consumer client.");
+        Meter.CreateHistogram<double>("messaging.client.operation.duration", "s", "Duration of messaging operation initiated by a producer or consumer client.", advice: durationAdvice);
 
     public const string ActivitySourceName = "Sanyappc.Extensions.RabbitMq";
     public const string MeterName = "Sanyappc.Extensions.RabbitMq";
