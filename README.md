@@ -2,7 +2,7 @@
 
 [![NuGet](https://img.shields.io/nuget/v/Sanyappc.Extensions.RabbitMq)](https://www.nuget.org/packages/Sanyappc.Extensions.RabbitMq)
 
-A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.
+A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions. Ships a Roslyn analyzer that flags polymorphic message types passed as a derived type at compile time.
 
 ## Installation
 
@@ -224,6 +224,33 @@ public async Task ProcessMessageAsync(RabbitMqRpcMessage message, CancellationTo
 **Fire-and-forget messages on an RPC queue:**
 
 If a message arrives without a `ReplyTo` header (sent fire-and-forget to the same queue), `ReplyAsync` skips the publish and only acknowledges. The handler code does not need to change.
+
+## Polymorphic messages
+
+System.Text.Json writes a type discriminator only when the value is serialized through the polymorphic *base* type, and checks one only when deserialized through it. A `[JsonDerivedType]` attribute is all it takes to make a base polymorphic; `[JsonPolymorphic]` only customises the discriminator.
+
+```csharp
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(Block), "block")]
+[JsonDerivedType(typeof(Delete), "delete")]
+public abstract record Deactivate { /* ... */ }
+
+// Discriminator dropped — derived static type, also inside a List<> or an array
+Deactivate.Delete msg = new() { /* ... */ };
+await publisher.PublishAsync("q", msg, ct);
+
+// Discriminator written — variable typed as the polymorphic base
+Deactivate msg = new Deactivate.Delete { /* ... */ };
+await publisher.PublishAsync("q", msg, ct);
+
+// Discriminator ignored — a "block" payload is accepted as a Delete with default members
+Deactivate.Delete read = message.GetBody<Deactivate.Delete>();
+
+// Discriminator checked — the result is the type the payload names
+Deactivate read = message.GetBody<Deactivate>();
+```
+
+The package ships a Roslyn analyzer that flags both unsafe forms at compile time: `SANYRMQ001` for a derived type passed to `PublishAsync`, `RequestAsync`, `ReplyAsync` or `SerializeBody`, and `SANYRMQ002` for a derived type read with `GetBody`, `DeserializeBody` or as the reply type of `RequestAsync`. Suppress them where you intentionally want concrete-type serialization.
 
 ## Health checks
 

@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="Sanyappc.Extensions.RabbitMq.Analyzers/Sanyappc.Extensions.RabbitMq.Analyzers.csproj" />
+  <Project Path="Sanyappc.Extensions.RabbitMq.Analyzers.Tests/Sanyappc.Extensions.RabbitMq.Analyzers.Tests.csproj" />
   <Project Path="Sanyappc.Extensions.RabbitMq.Tests/Sanyappc.Extensions.RabbitMq.Tests.csproj" />
   <Project Path="Sanyappc.Extensions.RabbitMq/Sanyappc.Extensions.RabbitMq.csproj" />
 </Solution>

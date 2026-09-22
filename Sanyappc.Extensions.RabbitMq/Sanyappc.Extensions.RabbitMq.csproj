@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <Authors>Alexander Mokrov</Authors>
     <Copyright>Copyright (c) 2026 Alexander Mokrov</Copyright>
-    <Description>A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions.</Description>
-    <PackageTags>rabbitmq messaging amqp consumer producer request-reply rpc opentelemetry tracing metrics health-checks hosted-service dotnet extensions</PackageTags>
+    <Description>A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions. Ships a Roslyn analyzer that flags polymorphic message types passed as a derived type at compile time.</Description>
+    <PackageTags>rabbitmq messaging amqp consumer producer request-reply rpc opentelemetry tracing metrics health-checks hosted-service roslyn-analyzer dotnet extensions</PackageTags>
     <PackageProjectUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sanyappc/Sanyappc.Extensions.RabbitMq</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -30,5 +30,22 @@
     <PackageReference Include="Microsoft.Extensions.Telemetry.Abstractions" Version="10.*" />
     <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sanyappc.Extensions.RabbitMq.Analyzers\Sanyappc.Extensions.RabbitMq.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_IncludeAnalyzerInPackage</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="_IncludeAnalyzerInPackage">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="..\Sanyappc.Extensions.RabbitMq.Analyzers\bin\$(Configuration)\netstandard2.0\Sanyappc.Extensions.RabbitMq.Analyzers.dll"
+                              PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+  </Target>
 
 </Project>
