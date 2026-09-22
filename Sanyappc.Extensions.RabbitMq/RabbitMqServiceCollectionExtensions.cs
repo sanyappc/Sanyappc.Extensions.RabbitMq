@@ -70,7 +70,8 @@ public static class RabbitMqServiceCollectionExtensions
             new RabbitMqConsumeService(
                 sp.GetRequiredService<ILogger<RabbitMqConsumeService>>(),
                 sp.GetRequiredKeyedService<IRabbitMqChannelFactory>(name),
-                sp.GetRequiredService<IServiceScopeFactory>()));
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                new NamedOptions<RabbitMqOptions>(sp.GetRequiredService<IOptionsMonitor<RabbitMqOptions>>(), name)));
 
         return services;
     }

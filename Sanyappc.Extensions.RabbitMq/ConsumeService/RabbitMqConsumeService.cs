@@ -1,18 +1,23 @@
 using System.Diagnostics;
+using System.Threading.Channels;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 namespace Sanyappc.Extensions.RabbitMq;
 
-internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> logger, IRabbitMqChannelFactory rabbitMqChannelFactory, IServiceScopeFactory serviceScopeFactory) : IRabbitMqConsumeService
+file readonly record struct ChannelShutdown(ShutdownEventArgs Reason, bool ConnectionOpen);
+
+internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> logger, IRabbitMqChannelFactory rabbitMqChannelFactory, IServiceScopeFactory serviceScopeFactory, IOptions<RabbitMqOptions> rabbitMqOptions) : IRabbitMqConsumeService
 {
     private readonly ILogger<RabbitMqConsumeService> logger = logger;
     private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
     private readonly IServiceScopeFactory serviceScopeFactory = serviceScopeFactory;
+    private readonly IOptions<RabbitMqOptions> rabbitMqOptions = rabbitMqOptions;
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Received message from queue {Queue}")]
     private static partial void LogMessageReceived(ILogger logger, string queue);
@@ -34,6 +39,75 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
 
     [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming RPC from queue {Queue}")]
     private static partial void LogRpcConsumeFailed(ILogger logger, string queue, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Resumed consuming from queue {Queue} after the connection recovered")]
+    private static partial void LogConsumeResumed(ILogger logger, string queue);
+
+    private static RabbitMqUnavailableException ChannelShutDownUnexpectedly(string consuming, string queue, ShutdownEventArgs reason) =>
+        new($"RabbitMQ channel shut down unexpectedly while {consuming} from queue '{queue}': {reason.ReplyText}");
+
+    private async Task ConsumeUntilClosedAsync(IChannel channel, string queue, string consuming, CancellationToken cancellationToken)
+    {
+        Channel<ChannelShutdown> shutdowns = Channel.CreateUnbounded<ChannelShutdown>();
+        using SemaphoreSlim recoveries = new(0);
+        IRecoverable? recoverable = channel as IRecoverable;
+
+        Task OnShutdownAsync(object? sender, ShutdownEventArgs reason)
+        {
+            // Read now: by the time the loop sees this shutdown, the recovery may already have reopened the connection.
+            shutdowns.Writer.TryWrite(new ChannelShutdown(reason, rabbitMqChannelFactory.IsConnectionOpen));
+            return Task.CompletedTask;
+        }
+
+        Task OnRecoveryAsync(object? sender, AsyncEventArgs args)
+        {
+            recoveries.Release();
+            return Task.CompletedTask;
+        }
+
+        if (recoverable is not null)
+            recoverable.RecoveryAsync += OnRecoveryAsync;
+
+        channel.ChannelShutdownAsync += OnShutdownAsync;
+
+        try
+        {
+            while (true)
+            {
+                ChannelShutdown shutdown = await shutdowns.Reader.ReadAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (shutdown.Reason.Initiator == ShutdownInitiator.Application)
+                    return;
+
+                LogChannelShutdown(logger, shutdown.Reason.ReplyText);
+
+                // The client recovers a channel only together with its connection: one the broker closed on its own stays closed.
+                if (shutdown.ConnectionOpen)
+                    throw ChannelShutDownUnexpectedly(consuming, queue, shutdown.Reason);
+
+                if (recoverable is null)
+                    throw ChannelShutDownUnexpectedly(consuming, queue, shutdown.Reason);
+
+                TimeSpan recoveryTimeout = TimeSpan.FromSeconds(rabbitMqOptions.Value.RecoveryTimeoutInSeconds);
+                bool recovered = await recoveries.WaitAsync(recoveryTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!recovered)
+                    throw new RabbitMqUnavailableException(
+                        $"RabbitMQ connection was not recovered within {recoveryTimeout} after the channel shut down while {consuming} from queue '{queue}': {shutdown.Reason.ReplyText}");
+
+                LogConsumeResumed(logger, queue);
+            }
+        }
+        finally
+        {
+            channel.ChannelShutdownAsync -= OnShutdownAsync;
+
+            if (recoverable is not null)
+                recoverable.RecoveryAsync -= OnRecoveryAsync;
+        }
+    }
 
     public async Task ConsumeAsync<T>(string queue, CancellationToken cancellationToken = default)
         where T : class, IRabbitMqMessageProcessingService
@@ -91,27 +165,10 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 }
             };
 
-            TaskCompletionSource channelClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            channel.ChannelShutdownAsync += (_, args) =>
-            {
-                if (args.Initiator == ShutdownInitiator.Application)
-                    channelClosed.TrySetResult();
-                else
-                {
-                    LogChannelShutdown(logger, args.ReplyText);
-
-                    channelClosed.TrySetException(new RabbitMqUnavailableException(
-                        $"RabbitMQ channel shut down unexpectedly while consuming from queue '{queue}': {args.ReplyText}"));
-                }
-
-                return Task.CompletedTask;
-            };
-
             await channel.BasicConsumeAsync(queue, false, consumer, cancellationToken)
                .ConfigureAwait(false);
 
-            await channelClosed.Task.WaitAsync(cancellationToken)
+            await ConsumeUntilClosedAsync(channel, queue, "consuming", cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -199,27 +256,10 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 }
             };
 
-            TaskCompletionSource channelClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            channel.ChannelShutdownAsync += (_, args) =>
-            {
-                if (args.Initiator == ShutdownInitiator.Application)
-                    channelClosed.TrySetResult();
-                else
-                {
-                    LogChannelShutdown(logger, args.ReplyText);
-
-                    channelClosed.TrySetException(new RabbitMqUnavailableException(
-                        $"RabbitMQ channel shut down unexpectedly while consuming RPC from queue '{queue}': {args.ReplyText}"));
-                }
-
-                return Task.CompletedTask;
-            };
-
             await channel.BasicConsumeAsync(queue, false, consumer, cancellationToken)
                .ConfigureAwait(false);
 
-            await channelClosed.Task.WaitAsync(cancellationToken)
+            await ConsumeUntilClosedAsync(channel, queue, "consuming RPC", cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

@@ -23,13 +23,17 @@ The library binds options from the `RabbitMq` configuration section.
     "Port": -1,
     "Username": "guest",
     "Password": "guest",
-    "ReplyTimeoutInSeconds": 5
+    "ReplyTimeoutInSeconds": 5,
+    "RecoveryIntervalInSeconds": 5,
+    "RecoveryTimeoutInSeconds": 60
   }
 }
 ```
 
 > `Port: -1` uses the RabbitMQ default port (5672).
 > `ReplyTimeoutInSeconds: -1` disables the timeout (waits indefinitely). Default is `5`.
+> `RecoveryIntervalInSeconds` is the wait between reconnect attempts after a lost connection. Default is `5`.
+> `RecoveryTimeoutInSeconds` is how long a consumer waits for its connection to come back before it gives up. Default is `60`; it must be greater than `RecoveryIntervalInSeconds`. See [Connection recovery](#connection-recovery).
 
 ### Environment variables
 
@@ -41,6 +45,8 @@ RabbitMq__Port=5672
 RabbitMq__Username=guest
 RabbitMq__Password=guest
 RabbitMq__ReplyTimeoutInSeconds=30
+RabbitMq__RecoveryIntervalInSeconds=5
+RabbitMq__RecoveryTimeoutInSeconds=60
 ```
 
 ### Programmatic (code)
@@ -244,13 +250,32 @@ builder.Services.AddHealthChecks()
     .AddRabbitMq("broker1", name: "primary-broker");
 ```
 
+## Connection recovery
+
+A lost broker connection does not stop a consumer. The client reconnects every `RecoveryIntervalInSeconds`, redeclares the queues, restores the channels and their consumers, and `ConsumeAsync` / `ConsumeRpcAsync` carry on in the same process. A message that was delivered but not yet acknowledged when the connection dropped is redelivered, so processing must tolerate a repeat. Publishing during the outage throws `RabbitMqUnavailableException`; once the connection is back, the next publish uses it.
+
+A consumer gives up and throws `RabbitMqUnavailableException` when:
+
+- its connection is not back within `RecoveryTimeoutInSeconds`. The hosted consumers registered by `AddRabbitMqConsumer` / `AddRabbitMqRpcConsumer` then stop the host with exit code `1`, so an orchestrator restarts the process;
+- the broker closes its channel while the connection stays open, for example after an acknowledgement with an unknown delivery tag. The client never reopens such a channel, so the consumer fails at once instead of waiting.
+
+The channel factory logs every loss and recovery:
+
+| Level | Message |
+|---|---|
+| Warning | `RabbitMQ connection to {Hostname}:{Port} lost: {Reason}. Reconnecting every {RecoveryInterval}` |
+| Warning | `RabbitMQ connection to {Hostname}:{Port} could not be recovered yet`, once per failed attempt, with its exception |
+| Information | `RabbitMQ connection to {Hostname}:{Port} recovered after {Outage}` |
+
+Each recovery is also measured by `rabbitmq.client.connection.recovery.duration` (see [Metrics](#metrics)), so recoveries stay visible on a dashboard although nothing restarts.
+
 ## Error handling
 
 All library errors derive from `RabbitMqException`, so you can catch the base type or a specific subtype:
 
 | Exception | When thrown |
 |---|---|
-| `RabbitMqUnavailableException` | Broker is unreachable or the channel shuts down unexpectedly |
+| `RabbitMqUnavailableException` | Broker is unreachable, a consumer's connection is not recovered within `RecoveryTimeoutInSeconds`, or the broker closes a consumer's channel while the connection stays open |
 | `RabbitMqTimeoutException` | `RequestAsync` did not receive a reply within `ReplyTimeoutInSeconds` |
 | `RabbitMqRequestRejectedException` | `RequestAsync` received an error reply from the handler via `ReplyErrorAsync` |
 
@@ -326,8 +351,9 @@ builder.Services.AddOpenTelemetry()
 | `messaging.client.consumed.messages` | Counter | `{message}` | On each delivered message |
 | `messaging.client.operation.duration` | Histogram | `s` | Per `PublishAsync` / `RequestAsync` call (success or failure) |
 | `messaging.process.duration` | Histogram | `s` | Per invocation of `ProcessMessageAsync` |
+| `rabbitmq.client.connection.recovery.duration` | Histogram | `s` | Once per recovered connection, from the loss until the connection, its channels and their consumers are back |
 
-Every instrument includes `messaging.system`, `messaging.destination.name`, `messaging.operation.name`, `messaging.operation.type`, `messaging.rabbitmq.destination.routing_key`, `server.address`, and `server.port`. Failed operations additionally set `error.type` to one of `timeout`, `request_rejected`, `broker_unavailable`, or the fully qualified exception type for unexpected errors.
+Every messaging instrument includes `messaging.system`, `messaging.destination.name`, `messaging.operation.name`, `messaging.operation.type`, `messaging.rabbitmq.destination.routing_key`, `server.address`, and `server.port`. Failed operations additionally set `error.type` to one of `timeout`, `request_rejected`, `broker_unavailable`, or the fully qualified exception type for unexpected errors. The recovery histogram carries only `messaging.system`, `server.address`, and `server.port`, since one connection serves every queue.
 
 ### Log correlation
 

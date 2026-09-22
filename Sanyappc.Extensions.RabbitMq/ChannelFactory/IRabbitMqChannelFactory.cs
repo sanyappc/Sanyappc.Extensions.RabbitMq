@@ -8,6 +8,8 @@ public interface IRabbitMqChannelFactory
 
     int ServerPort { get; }
 
+    bool IsConnectionOpen { get; }
+
     Task CheckAsync(CancellationToken cancellationToken = default);
 
     Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default);
