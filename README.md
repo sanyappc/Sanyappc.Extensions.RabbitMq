@@ -2,7 +2,7 @@
 
 [![NuGet](https://img.shields.io/nuget/v/Sanyappc.Extensions.RabbitMq)](https://www.nuget.org/packages/Sanyappc.Extensions.RabbitMq)
 
-A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing and metrics following messaging semantic conventions. Ships a Roslyn analyzer that flags polymorphic message types passed as a derived type at compile time.
+A .NET library for publishing and consuming RabbitMQ messages. Supports typed JSON messaging, manual acknowledgement, request/reply via Direct Reply-to, configurable reply timeout, automatic connection recovery, multiple broker connections, well-typed exceptions, health checks, and built-in OpenTelemetry tracing, metrics and structured logs following messaging semantic conventions. Ships a Roslyn analyzer that flags polymorphic message types passed or read as a derived type at compile time.
 
 ## Installation
 
