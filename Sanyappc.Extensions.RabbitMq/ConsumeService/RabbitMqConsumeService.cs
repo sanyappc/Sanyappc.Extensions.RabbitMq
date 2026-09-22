@@ -19,29 +19,30 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
     private readonly IServiceScopeFactory serviceScopeFactory = serviceScopeFactory;
     private readonly IOptions<RabbitMqOptions> rabbitMqOptions = rabbitMqOptions;
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Received message from queue {Queue}")]
-    private static partial void LogMessageReceived(ILogger logger, string queue);
+    [LoggerMessage(EventId = 40, Level = LogLevel.Debug, Message = "Received message from queue {messaging.destination.name}")]
+    private static partial void LogMessageReceived(ILogger logger, [TagName("messaging.destination.name")] string queue);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Error processing message from queue {Queue}")]
-    private static partial void LogMessageProcessingError(ILogger logger, string queue, Exception exception);
+    [LoggerMessage(EventId = 41, Level = LogLevel.Error, Message = "Error processing message from queue {messaging.destination.name}")]
+    private static partial void LogMessageProcessingError(ILogger logger, [TagName("messaging.destination.name")] string queue, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Channel shut down unexpectedly: {Reason}")]
-    private static partial void LogChannelShutdown(ILogger logger, string reason);
+    // Information: one line per consumer for a loss the connection already reported as a warning.
+    [LoggerMessage(EventId = 42, Level = LogLevel.Information, Message = "Channel shut down unexpectedly: {sanyappc.rabbitmq.shutdown.reason}")]
+    private static partial void LogChannelShutdown(ILogger logger, [TagName("sanyappc.rabbitmq.shutdown.reason")] string reason);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming from queue {Queue}")]
-    private static partial void LogConsumeFailed(ILogger logger, string queue, Exception exception);
+    [LoggerMessage(EventId = 43, Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming from queue {messaging.destination.name}")]
+    private static partial void LogConsumeFailed(ILogger logger, [TagName("messaging.destination.name")] string queue, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Received RPC message from queue {Queue}")]
-    private static partial void LogRpcMessageReceived(ILogger logger, string queue);
+    [LoggerMessage(EventId = 44, Level = LogLevel.Debug, Message = "Received RPC message from queue {messaging.destination.name}")]
+    private static partial void LogRpcMessageReceived(ILogger logger, [TagName("messaging.destination.name")] string queue);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Error processing RPC message from queue {Queue}")]
-    private static partial void LogRpcMessageProcessingError(ILogger logger, string queue, Exception exception);
+    [LoggerMessage(EventId = 45, Level = LogLevel.Error, Message = "Error processing RPC message from queue {messaging.destination.name}")]
+    private static partial void LogRpcMessageProcessingError(ILogger logger, [TagName("messaging.destination.name")] string queue, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming RPC from queue {Queue}")]
-    private static partial void LogRpcConsumeFailed(ILogger logger, string queue, Exception exception);
+    [LoggerMessage(EventId = 46, Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while consuming RPC from queue {messaging.destination.name}")]
+    private static partial void LogRpcConsumeFailed(ILogger logger, [TagName("messaging.destination.name")] string queue, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Resumed consuming from queue {Queue} after the connection recovered")]
-    private static partial void LogConsumeResumed(ILogger logger, string queue);
+    [LoggerMessage(EventId = 47, Level = LogLevel.Debug, Message = "Resumed consuming from queue {messaging.destination.name} after the connection recovered")]
+    private static partial void LogConsumeResumed(ILogger logger, [TagName("messaging.destination.name")] string queue);
 
     private static RabbitMqUnavailableException ChannelShutDownUnexpectedly(string consuming, string queue, ShutdownEventArgs reason) =>
         new($"RabbitMQ channel shut down unexpectedly while {consuming} from queue '{queue}': {reason.ReplyText}");
@@ -49,7 +50,8 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
     private async Task ConsumeUntilClosedAsync(IChannel channel, string queue, string consuming, CancellationToken cancellationToken)
     {
         Channel<ChannelShutdown> shutdowns = Channel.CreateUnbounded<ChannelShutdown>();
-        using SemaphoreSlim recoveries = new(0);
+        // Never disposed: the client snapshots its handlers before invoking them, so a recovery can still release this after the unsubscribe below.
+        SemaphoreSlim recoveries = new(0);
         IRecoverable? recoverable = channel as IRecoverable;
 
         Task OnShutdownAsync(object? sender, ShutdownEventArgs reason)
@@ -127,14 +129,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
             consumer.ReceivedAsync += async (_, @event) =>
             {
                 using Activity? activity = @event.StartProcessActivity(queue, serverAddress, serverPort);
-                using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
-                {
-                    ["Queue"] = queue,
-                    ["MessageId"] = @event.BasicProperties.MessageId,
-                    ["DeliveryTag"] = @event.DeliveryTag,
-                    ["TraceId"] = activity?.TraceId.ToString(),
-                    ["SpanId"] = activity?.SpanId.ToString(),
-                });
+                using IDisposable? loggerScope = logger.BeginScope(new MessageLogScope(queue, @event.BasicProperties.MessageId, @event.DeliveryTag));
 
                 LogMessageReceived(logger, queue);
 
@@ -205,14 +200,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
             consumer.ReceivedAsync += async (_, @event) =>
             {
                 using Activity? activity = @event.StartProcessActivity(queue, serverAddress, serverPort);
-                using IDisposable? loggerScope = logger.BeginScope(new Dictionary<string, object?>
-                {
-                    ["Queue"] = queue,
-                    ["MessageId"] = @event.BasicProperties.MessageId,
-                    ["DeliveryTag"] = @event.DeliveryTag,
-                    ["TraceId"] = activity?.TraceId.ToString(),
-                    ["SpanId"] = activity?.SpanId.ToString(),
-                });
+                using IDisposable? loggerScope = logger.BeginScope(new MessageLogScope(queue, @event.BasicProperties.MessageId, @event.DeliveryTag));
 
                 LogRpcMessageReceived(logger, queue);
 

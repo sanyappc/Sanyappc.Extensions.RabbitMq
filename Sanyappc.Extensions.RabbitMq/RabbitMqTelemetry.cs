@@ -59,7 +59,7 @@ public static class RabbitMqTelemetry
         Meter.CreateHistogram<double>("messaging.client.operation.duration", "s", "Duration of messaging operation initiated by a producer or consumer client.", advice: durationAdvice);
 
     internal static readonly Histogram<double> ConnectionRecoveryDuration =
-        Meter.CreateHistogram<double>("rabbitmq.client.connection.recovery.duration", "s", "Time from losing the broker connection to having it, its channels and their consumers back.", advice: recoveryDurationAdvice);
+        Meter.CreateHistogram<double>("sanyappc.rabbitmq.connection.recovery.duration", "s", "Time from losing the broker connection to having it, its channels and their consumers back.", advice: recoveryDurationAdvice);
 
     public const string ActivitySourceName = "Sanyappc.Extensions.RabbitMq";
     public const string MeterName = "Sanyappc.Extensions.RabbitMq";

@@ -27,7 +27,7 @@ public sealed class ConnectionRecoveryTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await Broker.SkipUnlessRunningAsync(cancellationToken);
         await using ConsumerUnderTest consumer = await ConsumerUnderTest.StartAsync<InboxProcessor>(Patience, cancellationToken);
-        using Measurements recoveries = new("rabbitmq.client.connection.recovery.duration", "server.port", consumer.Proxy.Port);
+        using Measurements recoveries = new("sanyappc.rabbitmq.connection.recovery.duration", "server.port", consumer.Proxy.Port);
 
         await Broker.PublishAsync(consumer.Queue, "before", cancellationToken);
         await consumer.Inbox.WaitForAsync("before", Patience, cancellationToken);

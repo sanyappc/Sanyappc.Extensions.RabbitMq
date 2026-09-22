@@ -2,10 +2,11 @@ using System.Net;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Sanyappc.Extensions.RabbitMq.Tests;
 
-// One consumer on its own queue, reaching the broker through a proxy the test can cut.
 internal sealed class ConsumerUnderTest : IAsyncDisposable
 {
     private static readonly TimeSpan RecoveryInterval = TimeSpan.FromSeconds(1);
@@ -28,6 +29,8 @@ internal sealed class ConsumerUnderTest : IAsyncDisposable
 
     public Inbox Inbox => provider.GetRequiredService<Inbox>();
 
+    public FakeLogCollector Logs => provider.GetRequiredService<FakeLogCollector>();
+
     public Task Consuming { get; }
 
     public static async Task<ConsumerUnderTest> StartAsync<TProcessor>(TimeSpan recoveryTimeout, CancellationToken cancellationToken)
@@ -42,6 +45,7 @@ internal sealed class ConsumerUnderTest : IAsyncDisposable
 
         ServiceCollection services = new();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace).AddFakeLogging());
         services.AddSingleton<Inbox>();
         services.AddScoped<TProcessor>();
         services.AddRabbitMqService(options =>

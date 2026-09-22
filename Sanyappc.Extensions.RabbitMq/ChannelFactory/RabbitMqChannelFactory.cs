@@ -33,20 +33,34 @@ internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> lo
 
     public bool IsConnectionOpen => connection?.IsOpen ?? false;
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "RabbitMQ connection established to {Hostname}:{Port}")]
-    private static partial void LogConnectionEstablished(ILogger logger, string hostname, int port);
+    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "RabbitMQ connection established to {server.address}:{server.port}")]
+    private static partial void LogConnectionEstablished(ILogger logger, [TagName("server.address")] string hostname, [TagName("server.port")] int port);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "RabbitMQ connection disposed")]
+    [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "RabbitMQ connection disposed")]
     private static partial void LogConnectionDisposed(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RabbitMQ connection to {Hostname}:{Port} lost: {Reason}. Reconnecting every {RecoveryInterval}")]
-    private static partial void LogConnectionLost(ILogger logger, string hostname, int port, string reason, TimeSpan recoveryInterval);
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "RabbitMQ connection to {server.address}:{server.port} lost: {sanyappc.rabbitmq.shutdown.reason}. Reconnecting every {sanyappc.rabbitmq.connection.recovery.interval}")]
+    private static partial void LogConnectionLost(
+        ILogger logger,
+        [TagName("server.address")] string hostname,
+        [TagName("server.port")] int port,
+        [TagName("sanyappc.rabbitmq.shutdown.reason")] string reason,
+        [TagName("sanyappc.rabbitmq.connection.recovery.interval")] TimeSpan recoveryInterval);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RabbitMQ connection to {Hostname}:{Port} could not be recovered yet")]
-    private static partial void LogRecoveryAttemptFailed(ILogger logger, string hostname, int port, Exception exception);
+    // Information without the exception: it repeats every interval for as long as the outage lasts, and the loss was already the warning.
+    [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "RabbitMQ connection to {server.address}:{server.port} could not be recovered yet: {sanyappc.rabbitmq.connection.recovery.error}")]
+    private static partial void LogRecoveryAttemptFailed(
+        ILogger logger,
+        [TagName("server.address")] string hostname,
+        [TagName("server.port")] int port,
+        [TagName("sanyappc.rabbitmq.connection.recovery.error")] string reason);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "RabbitMQ connection to {Hostname}:{Port} recovered after {Outage}")]
-    private static partial void LogConnectionRecovered(ILogger logger, string hostname, int port, TimeSpan outage);
+    [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "RabbitMQ connection to {server.address}:{server.port} recovered after {sanyappc.rabbitmq.connection.recovery.duration}")]
+    private static partial void LogConnectionRecovered(
+        ILogger logger,
+        [TagName("server.address")] string hostname,
+        [TagName("server.port")] int port,
+        [TagName("sanyappc.rabbitmq.connection.recovery.duration")] TimeSpan outage);
 
     private async Task<IConnection> GetOrCreateConnectionAsync(CancellationToken cancellationToken)
     {
@@ -88,7 +102,7 @@ internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> lo
 
     private Task OnConnectionRecoveryErrorAsync(object? sender, ConnectionRecoveryErrorEventArgs args)
     {
-        LogRecoveryAttemptFailed(logger, ServerAddress, ServerPort, args.Exception);
+        LogRecoveryAttemptFailed(logger, ServerAddress, ServerPort, args.Exception.Message);
 
         return Task.CompletedTask;
     }

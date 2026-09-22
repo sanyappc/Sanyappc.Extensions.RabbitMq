@@ -18,20 +18,55 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
     private readonly IRabbitMqChannelFactory rabbitMqChannelFactory = rabbitMqChannelFactory;
     private readonly IOptions<RabbitMqOptions> rabbitMqOptions = rabbitMqOptions;
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Publishing message to queue {Queue}")]
-    private static partial void LogPublish(ILogger logger, string queue);
+    [LoggerMessage(EventId = 20, Level = LogLevel.Debug, Message = "Publishing message to queue {messaging.destination.name}")]
+    private static partial void LogPublish(ILogger logger, [TagName("messaging.destination.name")] string queue);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while publishing to queue {Queue}")]
-    private static partial void LogPublishFailed(ILogger logger, string queue, Exception exception);
+    [LoggerMessage(EventId = 21, Level = LogLevel.Error, Message = "RabbitMQ broker unavailable while publishing to queue {messaging.destination.name}")]
+    private static partial void LogPublishFailed(ILogger logger, [TagName("messaging.destination.name")] string queue, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Sending request to queue {Queue}, awaiting reply")]
-    private static partial void LogRequest(ILogger logger, string queue);
+    [LoggerMessage(EventId = 22, Level = LogLevel.Debug, Message = "Sending request to queue {messaging.destination.name}, awaiting reply")]
+    private static partial void LogRequest(ILogger logger, [TagName("messaging.destination.name")] string queue);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RabbitMQ request to queue {Queue} timed out after {Timeout}")]
-    private static partial void LogRequestTimedOut(ILogger logger, string queue, TimeSpan timeout);
+    [LoggerMessage(EventId = 23, Level = LogLevel.Warning, Message = "RabbitMQ request to queue {messaging.destination.name} timed out after {sanyappc.rabbitmq.reply.timeout}")]
+    private static partial void LogRequestTimedOut(ILogger logger, [TagName("messaging.destination.name")] string queue, [TagName("sanyappc.rabbitmq.reply.timeout")] TimeSpan timeout);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable during request to queue {Queue}")]
-    private static partial void LogRequestFailed(ILogger logger, string queue, Exception exception);
+    [LoggerMessage(EventId = 24, Level = LogLevel.Error, Message = "RabbitMQ broker unavailable during request to queue {messaging.destination.name}")]
+    private static partial void LogRequestFailed(ILogger logger, [TagName("messaging.destination.name")] string queue, Exception exception);
+
+    private async Task AwaitReplyAsync(Task reply, string queue, CancellationToken cancellationToken)
+    {
+        TimeSpan replyTimeout = rabbitMqOptions.Value.ReplyTimeout;
+        if (replyTimeout == Timeout.InfiniteTimeSpan)
+        {
+            await reply.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            return;
+        }
+
+        using CancellationTokenSource timeoutCancellationTokenSource = new();
+        timeoutCancellationTokenSource.CancelAfter(replyTimeout);
+
+        using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCancellationTokenSource.Token);
+
+        try
+        {
+            await reply.WaitAsync(linkedCancellationTokenSource.Token)
+                .ConfigureAwait(false);
+        }
+        // WaitAsync cancels with the linked token, never with the timeout's own, so the timeout source is what to ask.
+        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                throw;
+
+            LogRequestTimedOut(logger, queue, replyTimeout);
+            throw new RabbitMqTimeoutException(
+                $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeout}.");
+        }
+    }
 
     public async Task PublishAsync(string queue, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
     {
@@ -146,37 +181,8 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, serializedBody, cancellationToken)
                 .ConfigureAwait(false);
 
-            TimeSpan replyTimeout = rabbitMqOptions.Value.ReplyTimeout;
-            if (replyTimeout != Timeout.InfiniteTimeSpan)
-            {
-                using CancellationTokenSource timeoutCancellationTokenSource = new();
-                timeoutCancellationTokenSource.CancelAfter(replyTimeout);
-
-                using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken,
-                    timeoutCancellationTokenSource.Token);
-
-                try
-                {
-                    await replyTaskCompletionSource.Task.WaitAsync(linkedCancellationTokenSource.Token)
-                        .ConfigureAwait(false);
-                }
-                // WaitAsync cancels with the linked token, never with the timeout's own, so the timeout source is what to ask.
-                catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        throw;
-
-                    LogRequestTimedOut(logger, queue, replyTimeout);
-                    throw new RabbitMqTimeoutException(
-                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeout}.");
-                }
-            }
-            else
-            {
-                await replyTaskCompletionSource.Task.WaitAsync(cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            await AwaitReplyAsync(replyTaskCompletionSource.Task, queue, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -266,37 +272,11 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, serializedBody, cancellationToken)
                 .ConfigureAwait(false);
 
-            TimeSpan replyTimeout = rabbitMqOptions.Value.ReplyTimeout;
-            if (replyTimeout != Timeout.InfiniteTimeSpan)
-            {
-                using CancellationTokenSource timeoutCancellationTokenSource = new();
-                timeoutCancellationTokenSource.CancelAfter(replyTimeout);
+            await AwaitReplyAsync(replyTaskCompletionSource.Task, queue, cancellationToken)
+                .ConfigureAwait(false);
 
-                using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken,
-                    timeoutCancellationTokenSource.Token);
-
-                try
-                {
-                    return await replyTaskCompletionSource.Task.WaitAsync(linkedCancellationTokenSource.Token)
-                        .ConfigureAwait(false);
-                }
-                // WaitAsync cancels with the linked token, never with the timeout's own, so the timeout source is what to ask.
-                catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        throw;
-
-                    LogRequestTimedOut(logger, queue, replyTimeout);
-                    throw new RabbitMqTimeoutException(
-                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeout}.");
-                }
-            }
-            else
-            {
-                return await replyTaskCompletionSource.Task.WaitAsync(cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            return await replyTaskCompletionSource.Task
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

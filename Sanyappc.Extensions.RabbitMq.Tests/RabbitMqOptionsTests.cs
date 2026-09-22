@@ -77,6 +77,16 @@ public sealed class RabbitMqOptionsTests
         Assert.Contains(nameof(RabbitMqOptions.ReplyTimeout), failure.Message);
     }
 
+    // 30 days: past the semaphore's bound but inside a timer's, so one shared bound would have let it through.
+    [Fact]
+    public void ARecoveryTimeoutLongerThanTheWaitCanTakeIsRejected()
+    {
+        OptionsValidationException failure = Assert.Throws<OptionsValidationException>(
+            () => ResolveWith(options => options.RecoveryTimeout = TimeSpan.FromDays(30)));
+
+        Assert.Contains(nameof(RabbitMqOptions.RecoveryTimeout), failure.Message);
+    }
+
     [Fact]
     public void ARecoveryTimeoutNoLongerThanTheIntervalIsRejected()
     {

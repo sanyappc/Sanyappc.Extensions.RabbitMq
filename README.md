@@ -260,15 +260,9 @@ A consumer gives up and throws `RabbitMqUnavailableException` when:
 - its connection is not back within `RecoveryTimeout`. The hosted consumers registered by `AddRabbitMqConsumer` / `AddRabbitMqRpcConsumer` then stop the host with exit code `1`, so an orchestrator restarts the process;
 - the broker closes its channel while the connection stays open, for example after an acknowledgement with an unknown delivery tag. The client never reopens such a channel, so the consumer fails at once instead of waiting.
 
-The channel factory logs every loss and recovery:
+The channel factory logs every loss and recovery: the loss is a warning (event `3`), each failed attempt and the recovery are information (events `4` and `5`), and every consumer notes its channel going down and coming back (events `42` and `47`). See [Log events](#log-events).
 
-| Level | Message |
-|---|---|
-| Warning | `RabbitMQ connection to {Hostname}:{Port} lost: {Reason}. Reconnecting every {RecoveryInterval}` |
-| Warning | `RabbitMQ connection to {Hostname}:{Port} could not be recovered yet`, once per failed attempt, with its exception |
-| Information | `RabbitMQ connection to {Hostname}:{Port} recovered after {Outage}` |
-
-Each recovery is also measured by `rabbitmq.client.connection.recovery.duration` (see [Metrics](#metrics)), so recoveries stay visible on a dashboard although nothing restarts.
+Each recovery is also measured by `sanyappc.rabbitmq.connection.recovery.duration` (see [Metrics](#metrics)), so recoveries stay visible on a dashboard although nothing restarts.
 
 ## Error handling
 
@@ -352,18 +346,41 @@ builder.Services.AddOpenTelemetry()
 | `messaging.client.consumed.messages` | Counter | `{message}` | On each delivered message |
 | `messaging.client.operation.duration` | Histogram | `s` | Per `PublishAsync` / `RequestAsync` call (success or failure) |
 | `messaging.process.duration` | Histogram | `s` | Per invocation of `ProcessMessageAsync` |
-| `rabbitmq.client.connection.recovery.duration` | Histogram | `s` | Once per recovered connection, from the loss until the connection, its channels and their consumers are back |
+| `sanyappc.rabbitmq.connection.recovery.duration` | Histogram | `s` | Once per recovered connection, from the loss until the connection, its channels and their consumers are back |
 
 Every messaging instrument includes `messaging.system`, `messaging.destination.name`, `messaging.operation.name`, `messaging.operation.type`, `messaging.rabbitmq.destination.routing_key`, `server.address`, and `server.port`. Failed operations additionally set `error.type` to one of `timeout`, `request_rejected`, `broker_unavailable`, or the fully qualified exception type for unexpected errors. The recovery histogram carries only `messaging.system`, `server.address`, and `server.port`, since one connection serves every queue.
 
+### Log events
+
+Every message the library logs carries a stable event id, so a sink can filter or alert on an event without matching its text. Ids `1`–`19` belong to the connection, `20`–`39` to publishing, `40`–`59` to consuming. The placeholders are the log record's attribute names: the same [semantic convention](https://opentelemetry.io/docs/specs/semconv/messaging/) names the spans and metrics carry (`messaging.destination.name`, `server.address`, `server.port`), and `sanyappc.rabbitmq.*` for what has no convention.
+
+| Id | Level | Message |
+|---|---|---|
+| 1 | Information | `RabbitMQ connection established to {server.address}:{server.port}` |
+| 2 | Information | `RabbitMQ connection disposed` |
+| 3 | Warning | `RabbitMQ connection to {server.address}:{server.port} lost: {sanyappc.rabbitmq.shutdown.reason}. Reconnecting every {sanyappc.rabbitmq.connection.recovery.interval}` |
+| 4 | Information | `RabbitMQ connection to {server.address}:{server.port} could not be recovered yet: {sanyappc.rabbitmq.connection.recovery.error}`, once per failed attempt |
+| 5 | Information | `RabbitMQ connection to {server.address}:{server.port} recovered after {sanyappc.rabbitmq.connection.recovery.duration}` |
+| 20 | Debug | `Publishing message to queue {messaging.destination.name}` |
+| 21 | Error | `RabbitMQ broker unavailable while publishing to queue {messaging.destination.name}`, with the exception |
+| 22 | Debug | `Sending request to queue {messaging.destination.name}, awaiting reply` |
+| 23 | Warning | `RabbitMQ request to queue {messaging.destination.name} timed out after {sanyappc.rabbitmq.reply.timeout}` |
+| 24 | Error | `RabbitMQ broker unavailable during request to queue {messaging.destination.name}`, with the exception |
+| 40 | Debug | `Received message from queue {messaging.destination.name}` |
+| 41 | Error | `Error processing message from queue {messaging.destination.name}`, with the exception |
+| 42 | Information | `Channel shut down unexpectedly: {sanyappc.rabbitmq.shutdown.reason}` |
+| 43 | Error | `RabbitMQ broker unavailable while consuming from queue {messaging.destination.name}`, with the exception |
+| 44 | Debug | `Received RPC message from queue {messaging.destination.name}` |
+| 45 | Error | `Error processing RPC message from queue {messaging.destination.name}`, with the exception |
+| 46 | Error | `RabbitMQ broker unavailable while consuming RPC from queue {messaging.destination.name}`, with the exception |
+| 47 | Debug | `Resumed consuming from queue {messaging.destination.name} after the connection recovered` |
+
 ### Log correlation
 
-Each consumed message opens a logger scope with the following properties, available in structured log sinks (Seq, Loki, Application Insights, etc.):
+Each consumed message is processed inside a logger scope, so every line logged meanwhile, by the library or by your processor, carries the message's own attributes in structured sinks (Seq, Loki, Application Insights, etc.). On the simple console the scope renders as `queue orders, message 7f3a, delivery tag 42`.
 
 | Key | Value |
 |---|---|
-| `Queue` | Queue name |
-| `MessageId` | AMQP message ID (null if not set by publisher) |
-| `DeliveryTag` | Per-channel delivery sequence number |
-| `TraceId` | W3C trace ID |
-| `SpanId` | W3C span ID |
+| `messaging.destination.name` | Queue name |
+| `messaging.message.id` | AMQP message ID (null if not set by publisher) |
+| `messaging.rabbitmq.message.delivery_tag` | Per-channel delivery sequence number |

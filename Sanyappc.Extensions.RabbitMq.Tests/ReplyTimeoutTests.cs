@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Sanyappc.Extensions.RabbitMq.Tests;
 
@@ -9,6 +11,7 @@ public sealed class ReplyTimeoutTests
     private const string OperationDuration = "messaging.client.operation.duration";
     private const string DestinationTag = "messaging.destination.name";
     private const string ErrorTypeTag = "error.type";
+    private const int RequestTimedOutEvent = 23;
 
     private static readonly TimeSpan ShortReplyTimeout = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
@@ -17,6 +20,7 @@ public sealed class ReplyTimeoutTests
     {
         ServiceCollection services = new();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddLogging(logging => logging.AddFakeLogging());
         services.AddRabbitMqService(options =>
         {
             options.Hostname = Broker.Hostname;
@@ -72,6 +76,25 @@ public sealed class ReplyTimeoutTests
 
         Measurement request = await requests.NextAsync(Patience, cancellationToken);
         Assert.Equal("timeout", request.Tags[ErrorTypeTag]);
+    }
+
+    [Fact]
+    public async Task ATimeoutIsLoggedUnderTheSameKeysAsItsSpanAndMetric()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await Broker.SkipUnlessRunningAsync(cancellationToken);
+        await using TemporaryQueue queue = new();
+        await using ServiceProvider provider = PublisherWith(ShortReplyTimeout);
+        IRabbitMqPublishService publisher = provider.GetRequiredService<IRabbitMqPublishService>();
+
+        await Assert.ThrowsAsync<RabbitMqTimeoutException>(
+            () => publisher.RequestAsync<string, string>(queue.Name, "ping", cancellationToken: cancellationToken));
+
+        FakeLogRecord timedOut = Assert.Single(provider.GetRequiredService<FakeLogCollector>().GetSnapshot(), record => record.Id.Id == RequestTimedOutEvent);
+        Assert.Equal(LogLevel.Warning, timedOut.Level);
+        Assert.Equal($"RabbitMQ request to queue {queue.Name} timed out after {ShortReplyTimeout}", timedOut.Message);
+        Assert.Equal(queue.Name, timedOut.StructuredState?.Single(pair => pair.Key == DestinationTag).Value);
+        Assert.Equal(ShortReplyTimeout.ToString(), timedOut.StructuredState?.Single(pair => pair.Key == "sanyappc.rabbitmq.reply.timeout").Value);
     }
 
     [Fact]

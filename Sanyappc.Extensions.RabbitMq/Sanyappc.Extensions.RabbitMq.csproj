@@ -27,6 +27,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.*" />
+    <PackageReference Include="Microsoft.Extensions.Telemetry.Abstractions" Version="10.*" />
     <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
   </ItemGroup>
 

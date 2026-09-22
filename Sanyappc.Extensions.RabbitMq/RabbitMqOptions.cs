@@ -4,8 +4,13 @@ namespace Sanyappc.Extensions.RabbitMq;
 
 public class RabbitMqOptions : IValidatableObject
 {
-    // CancelAfter and Task.Delay accept nothing longer.
-    private static readonly TimeSpan MaxTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+    // CancelAfter accepts nothing longer.
+    private static readonly TimeSpan MaxReplyTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
+    // SemaphoreSlim.WaitAsync, which times the wait for a recovery, accepts nothing longer.
+    private static readonly TimeSpan MaxRecoveryTimeout = TimeSpan.FromMilliseconds(int.MaxValue);
+
+    private const string InfiniteTimeSpanInConfiguration = "-00:00:00.001";
 
     [Required]
     [MinLength(1)]
@@ -35,11 +40,11 @@ public class RabbitMqOptions : IValidatableObject
 
         if (ReplyTimeout <= TimeSpan.Zero)
             yield return new ValidationResult(
-                $"{nameof(ReplyTimeout)} must be positive, or {nameof(Timeout)}.{nameof(Timeout.InfiniteTimeSpan)} to wait for a reply forever.",
+                $"{nameof(ReplyTimeout)} must be positive, or {nameof(Timeout)}.{nameof(Timeout.InfiniteTimeSpan)} ({InfiniteTimeSpanInConfiguration} in configuration) to wait for a reply forever.",
                 [nameof(ReplyTimeout)]);
 
-        if (ReplyTimeout > MaxTimeout)
-            yield return new ValidationResult($"{nameof(ReplyTimeout)} must not exceed {MaxTimeout}.", [nameof(ReplyTimeout)]);
+        if (ReplyTimeout > MaxReplyTimeout)
+            yield return new ValidationResult($"{nameof(ReplyTimeout)} must not exceed {MaxReplyTimeout}.", [nameof(ReplyTimeout)]);
     }
 
     private IEnumerable<ValidationResult> ValidateRecovery()
@@ -47,8 +52,8 @@ public class RabbitMqOptions : IValidatableObject
         if (RecoveryInterval <= TimeSpan.Zero)
             yield return new ValidationResult($"{nameof(RecoveryInterval)} must be positive.", [nameof(RecoveryInterval)]);
 
-        if (RecoveryTimeout > MaxTimeout)
-            yield return new ValidationResult($"{nameof(RecoveryTimeout)} must not exceed {MaxTimeout}.", [nameof(RecoveryTimeout)]);
+        if (RecoveryTimeout > MaxRecoveryTimeout)
+            yield return new ValidationResult($"{nameof(RecoveryTimeout)} must not exceed {MaxRecoveryTimeout}.", [nameof(RecoveryTimeout)]);
 
         if (RecoveryTimeout <= RecoveryInterval)
         {
