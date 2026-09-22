@@ -4,6 +4,9 @@ namespace Sanyappc.Extensions.RabbitMq;
 
 public class RabbitMqOptions : IValidatableObject
 {
+    // CancelAfter and Task.Delay accept nothing longer.
+    private static readonly TimeSpan MaxTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
     [Required]
     [MinLength(1)]
     public string Hostname { get; set; } = string.Empty;
@@ -19,24 +22,49 @@ public class RabbitMqOptions : IValidatableObject
     [MinLength(1)]
     public string Password { get; set; } = string.Empty;
 
-    [Required]
-    [Range(-1, int.MaxValue)]
-    public int ReplyTimeoutInSeconds { get; set; } = 5;
+    public TimeSpan ReplyTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
-    [Required]
-    [Range(1, int.MaxValue)]
-    public int RecoveryIntervalInSeconds { get; set; } = 5;
+    public TimeSpan RecoveryInterval { get; set; } = TimeSpan.FromSeconds(5);
 
-    [Required]
-    [Range(1, int.MaxValue)]
-    public int RecoveryTimeoutInSeconds { get; set; } = 60;
+    public TimeSpan RecoveryTimeout { get; set; } = TimeSpan.FromMinutes(1);
+
+    private IEnumerable<ValidationResult> ValidateReplyTimeout()
+    {
+        if (ReplyTimeout == Timeout.InfiniteTimeSpan)
+            yield break;
+
+        if (ReplyTimeout <= TimeSpan.Zero)
+            yield return new ValidationResult(
+                $"{nameof(ReplyTimeout)} must be positive, or {nameof(Timeout)}.{nameof(Timeout.InfiniteTimeSpan)} to wait for a reply forever.",
+                [nameof(ReplyTimeout)]);
+
+        if (ReplyTimeout > MaxTimeout)
+            yield return new ValidationResult($"{nameof(ReplyTimeout)} must not exceed {MaxTimeout}.", [nameof(ReplyTimeout)]);
+    }
+
+    private IEnumerable<ValidationResult> ValidateRecovery()
+    {
+        if (RecoveryInterval <= TimeSpan.Zero)
+            yield return new ValidationResult($"{nameof(RecoveryInterval)} must be positive.", [nameof(RecoveryInterval)]);
+
+        if (RecoveryTimeout > MaxTimeout)
+            yield return new ValidationResult($"{nameof(RecoveryTimeout)} must not exceed {MaxTimeout}.", [nameof(RecoveryTimeout)]);
+
+        if (RecoveryTimeout <= RecoveryInterval)
+        {
+            yield return new ValidationResult(
+                $"{nameof(RecoveryTimeout)} ({RecoveryTimeout}) must be greater than {nameof(RecoveryInterval)} ({RecoveryInterval}): "
+                + "the first reconnect attempt starts one interval after the loss, so the consumer would give up before it.",
+                [nameof(RecoveryTimeout)]);
+        }
+    }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        // The first reconnect attempt starts one interval after the loss, so a timeout that short gives up before any attempt.
-        if (RecoveryTimeoutInSeconds <= RecoveryIntervalInSeconds)
-            yield return new ValidationResult(
-                $"{nameof(RecoveryTimeoutInSeconds)} must be greater than {nameof(RecoveryIntervalInSeconds)}.",
-                [nameof(RecoveryTimeoutInSeconds)]);
+        foreach (ValidationResult result in ValidateReplyTimeout())
+            yield return result;
+
+        foreach (ValidationResult result in ValidateRecovery())
+            yield return result;
     }
 }

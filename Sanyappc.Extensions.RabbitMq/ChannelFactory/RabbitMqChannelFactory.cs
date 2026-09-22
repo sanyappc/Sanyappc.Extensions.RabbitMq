@@ -20,7 +20,7 @@ internal partial class RabbitMqChannelFactory(ILogger<RabbitMqChannelFactory> lo
         Password = options.Password,
         AutomaticRecoveryEnabled = true,
         TopologyRecoveryEnabled = true,
-        NetworkRecoveryInterval = TimeSpan.FromSeconds(options.RecoveryIntervalInSeconds)
+        NetworkRecoveryInterval = options.RecoveryInterval
     };
 
     private readonly SemaphoreSlim semaphoreSlim = new(1, 1);

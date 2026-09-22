@@ -8,7 +8,7 @@ namespace Sanyappc.Extensions.RabbitMq.Tests;
 // One consumer on its own queue, reaching the broker through a proxy the test can cut.
 internal sealed class ConsumerUnderTest : IAsyncDisposable
 {
-    private const int RecoveryIntervalInSeconds = 1;
+    private static readonly TimeSpan RecoveryInterval = TimeSpan.FromSeconds(1);
 
     private readonly ServiceProvider provider;
     private readonly CancellationTokenSource stopping;
@@ -30,7 +30,7 @@ internal sealed class ConsumerUnderTest : IAsyncDisposable
 
     public Task Consuming { get; }
 
-    public static async Task<ConsumerUnderTest> StartAsync<TProcessor>(int recoveryTimeoutInSeconds, CancellationToken cancellationToken)
+    public static async Task<ConsumerUnderTest> StartAsync<TProcessor>(TimeSpan recoveryTimeout, CancellationToken cancellationToken)
         where TProcessor : class, IRabbitMqMessageProcessingService
     {
         string queue = $"recovery-{Guid.NewGuid():N}";
@@ -50,8 +50,8 @@ internal sealed class ConsumerUnderTest : IAsyncDisposable
             options.Port = proxy.Port;
             options.Username = Broker.Username;
             options.Password = Broker.Password;
-            options.RecoveryIntervalInSeconds = RecoveryIntervalInSeconds;
-            options.RecoveryTimeoutInSeconds = recoveryTimeoutInSeconds;
+            options.RecoveryInterval = RecoveryInterval;
+            options.RecoveryTimeout = recoveryTimeout;
         });
 
         ServiceProvider provider = services.BuildServiceProvider();

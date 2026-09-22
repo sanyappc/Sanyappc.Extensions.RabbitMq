@@ -89,7 +89,7 @@ internal partial class RabbitMqConsumeService(ILogger<RabbitMqConsumeService> lo
                 if (recoverable is null)
                     throw ChannelShutDownUnexpectedly(consuming, queue, shutdown.Reason);
 
-                TimeSpan recoveryTimeout = TimeSpan.FromSeconds(rabbitMqOptions.Value.RecoveryTimeoutInSeconds);
+                TimeSpan recoveryTimeout = rabbitMqOptions.Value.RecoveryTimeout;
                 bool recovered = await recoveries.WaitAsync(recoveryTimeout, cancellationToken)
                     .ConfigureAwait(false);
 

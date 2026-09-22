@@ -10,9 +10,10 @@ public sealed class ReplyTimeoutTests
     private const string DestinationTag = "messaging.destination.name";
     private const string ErrorTypeTag = "error.type";
 
+    private static readonly TimeSpan ShortReplyTimeout = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
 
-    private static ServiceProvider PublisherWith(int replyTimeoutInSeconds)
+    private static ServiceProvider PublisherWith(TimeSpan replyTimeout)
     {
         ServiceCollection services = new();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
@@ -22,7 +23,7 @@ public sealed class ReplyTimeoutTests
             options.Port = Broker.Port;
             options.Username = Broker.Username;
             options.Password = Broker.Password;
-            options.ReplyTimeoutInSeconds = replyTimeoutInSeconds;
+            options.ReplyTimeout = replyTimeout;
         });
 
         return services.BuildServiceProvider();
@@ -34,13 +35,13 @@ public sealed class ReplyTimeoutTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await Broker.SkipUnlessRunningAsync(cancellationToken);
         await using TemporaryQueue queue = new();
-        await using ServiceProvider provider = PublisherWith(1);
+        await using ServiceProvider provider = PublisherWith(ShortReplyTimeout);
         IRabbitMqPublishService publisher = provider.GetRequiredService<IRabbitMqPublishService>();
 
         RabbitMqTimeoutException failure = await Assert.ThrowsAsync<RabbitMqTimeoutException>(
             () => publisher.RequestAsync<string, string>(queue.Name, "ping", cancellationToken: cancellationToken));
 
-        Assert.Contains("timed out after 1 seconds", failure.Message);
+        Assert.Contains($"timed out after {ShortReplyTimeout}", failure.Message);
     }
 
     [Fact]
@@ -49,7 +50,7 @@ public sealed class ReplyTimeoutTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await Broker.SkipUnlessRunningAsync(cancellationToken);
         await using TemporaryQueue queue = new();
-        await using ServiceProvider provider = PublisherWith(1);
+        await using ServiceProvider provider = PublisherWith(ShortReplyTimeout);
         IRabbitMqPublishService publisher = provider.GetRequiredService<IRabbitMqPublishService>();
 
         await Assert.ThrowsAsync<RabbitMqTimeoutException>(
@@ -62,7 +63,7 @@ public sealed class ReplyTimeoutTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await Broker.SkipUnlessRunningAsync(cancellationToken);
         await using TemporaryQueue queue = new();
-        await using ServiceProvider provider = PublisherWith(1);
+        await using ServiceProvider provider = PublisherWith(ShortReplyTimeout);
         IRabbitMqPublishService publisher = provider.GetRequiredService<IRabbitMqPublishService>();
         using Measurements requests = new(OperationDuration, DestinationTag, queue.Name);
 
@@ -79,7 +80,7 @@ public sealed class ReplyTimeoutTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await Broker.SkipUnlessRunningAsync(cancellationToken);
         await using TemporaryQueue queue = new();
-        await using ServiceProvider provider = PublisherWith(30);
+        await using ServiceProvider provider = PublisherWith(Patience);
         IRabbitMqPublishService publisher = provider.GetRequiredService<IRabbitMqPublishService>();
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         caller.CancelAfter(TimeSpan.FromMilliseconds(500));

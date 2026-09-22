@@ -9,6 +9,8 @@ namespace Sanyappc.Extensions.RabbitMq.Tests;
 // A real broker: recovery lives in RabbitMQ.Client's reaction to a dropped socket, which no fake reproduces.
 internal static class Broker
 {
+    private static bool Required { get; } = RequiredFromEnvironment();
+
     public static string Hostname { get; } = Environment.GetEnvironmentVariable("RABBITMQ_TEST_HOSTNAME") ?? "localhost";
 
     public static int Port { get; } = PortFromEnvironment();
@@ -24,6 +26,15 @@ internal static class Broker
             return 5672;
 
         return int.Parse(configured, CultureInfo.InvariantCulture);
+    }
+
+    private static bool RequiredFromEnvironment()
+    {
+        string? configured = Environment.GetEnvironmentVariable("RABBITMQ_TEST_REQUIRED");
+        if (configured is null)
+            return false;
+
+        return bool.Parse(configured);
     }
 
     private static async Task<IConnection> ConnectAsync(CancellationToken cancellationToken)
@@ -48,6 +59,10 @@ internal static class Broker
         }
         catch (Exception exception) when (exception is SocketException or TimeoutException)
         {
+            // CI sets it: a broker service that failed to start must fail the run, not turn every broker test into a skip.
+            if (Required)
+                Assert.Fail($"No RabbitMQ broker at {Hostname}:{Port}, and RABBITMQ_TEST_REQUIRED is set.");
+
             Assert.Skip($"No RabbitMQ broker at {Hostname}:{Port}. Start one with: docker run -d --rm -p 5672:5672 rabbitmq:4");
         }
     }

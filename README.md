@@ -23,17 +23,18 @@ The library binds options from the `RabbitMq` configuration section.
     "Port": -1,
     "Username": "guest",
     "Password": "guest",
-    "ReplyTimeoutInSeconds": 5,
-    "RecoveryIntervalInSeconds": 5,
-    "RecoveryTimeoutInSeconds": 60
+    "ReplyTimeout": "00:00:05",
+    "RecoveryInterval": "00:00:05",
+    "RecoveryTimeout": "00:01:00"
   }
 }
 ```
 
 > `Port: -1` uses the RabbitMQ default port (5672).
-> `ReplyTimeoutInSeconds: -1` disables the timeout (waits indefinitely). Default is `5`.
-> `RecoveryIntervalInSeconds` is the wait between reconnect attempts after a lost connection. Default is `5`.
-> `RecoveryTimeoutInSeconds` is how long a consumer waits for its connection to come back before it gives up. Default is `60`; it must be greater than `RecoveryIntervalInSeconds`. See [Connection recovery](#connection-recovery).
+> Durations are `TimeSpan` values, written `hh:mm:ss` in configuration.
+> `ReplyTimeout` is how long `RequestAsync` waits for a reply. Default is `00:00:05`; `Timeout.InfiniteTimeSpan` (`-00:00:00.001` in configuration) waits indefinitely.
+> `RecoveryInterval` is the wait between reconnect attempts after a lost connection. Default is `00:00:05`.
+> `RecoveryTimeout` is how long a consumer waits for its connection to come back before it gives up. Default is `00:01:00`; it must be greater than `RecoveryInterval`. See [Connection recovery](#connection-recovery).
 
 ### Environment variables
 
@@ -44,9 +45,9 @@ RabbitMq__Hostname=localhost
 RabbitMq__Port=5672
 RabbitMq__Username=guest
 RabbitMq__Password=guest
-RabbitMq__ReplyTimeoutInSeconds=30
-RabbitMq__RecoveryIntervalInSeconds=5
-RabbitMq__RecoveryTimeoutInSeconds=60
+RabbitMq__ReplyTimeout=00:00:30
+RabbitMq__RecoveryInterval=00:00:05
+RabbitMq__RecoveryTimeout=00:01:00
 ```
 
 ### Programmatic (code)
@@ -252,11 +253,11 @@ builder.Services.AddHealthChecks()
 
 ## Connection recovery
 
-A lost broker connection does not stop a consumer. The client reconnects every `RecoveryIntervalInSeconds`, redeclares the queues, restores the channels and their consumers, and `ConsumeAsync` / `ConsumeRpcAsync` carry on in the same process. A message that was delivered but not yet acknowledged when the connection dropped is redelivered, so processing must tolerate a repeat. Publishing during the outage throws `RabbitMqUnavailableException`; once the connection is back, the next publish uses it.
+A lost broker connection does not stop a consumer. The client reconnects every `RecoveryInterval`, redeclares the queues, restores the channels and their consumers, and `ConsumeAsync` / `ConsumeRpcAsync` carry on in the same process. A message that was delivered but not yet acknowledged when the connection dropped is redelivered, so processing must tolerate a repeat. Publishing during the outage throws `RabbitMqUnavailableException`; once the connection is back, the next publish uses it.
 
 A consumer gives up and throws `RabbitMqUnavailableException` when:
 
-- its connection is not back within `RecoveryTimeoutInSeconds`. The hosted consumers registered by `AddRabbitMqConsumer` / `AddRabbitMqRpcConsumer` then stop the host with exit code `1`, so an orchestrator restarts the process;
+- its connection is not back within `RecoveryTimeout`. The hosted consumers registered by `AddRabbitMqConsumer` / `AddRabbitMqRpcConsumer` then stop the host with exit code `1`, so an orchestrator restarts the process;
 - the broker closes its channel while the connection stays open, for example after an acknowledgement with an unknown delivery tag. The client never reopens such a channel, so the consumer fails at once instead of waiting.
 
 The channel factory logs every loss and recovery:
@@ -275,8 +276,8 @@ All library errors derive from `RabbitMqException`, so you can catch the base ty
 
 | Exception | When thrown |
 |---|---|
-| `RabbitMqUnavailableException` | Broker is unreachable, a consumer's connection is not recovered within `RecoveryTimeoutInSeconds`, or the broker closes a consumer's channel while the connection stays open |
-| `RabbitMqTimeoutException` | `RequestAsync` did not receive a reply within `ReplyTimeoutInSeconds` |
+| `RabbitMqUnavailableException` | Broker is unreachable, a consumer's connection is not recovered within `RecoveryTimeout`, or the broker closes a consumer's channel while the connection stays open |
+| `RabbitMqTimeoutException` | `RequestAsync` did not receive a reply within `ReplyTimeout` |
 | `RabbitMqRequestRejectedException` | `RequestAsync` received an error reply from the handler via `ReplyErrorAsync` |
 
 ```csharp
@@ -302,7 +303,7 @@ catch (RabbitMqRequestRejectedException ex)
 }
 catch (RabbitMqTimeoutException)
 {
-    // no reply within ReplyTimeoutInSeconds — return 504
+    // no reply within ReplyTimeout — return 504
 }
 catch (RabbitMqUnavailableException)
 {

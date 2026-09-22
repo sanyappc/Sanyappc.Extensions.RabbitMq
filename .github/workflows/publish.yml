@@ -12,6 +12,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
 
+    services:
+      rabbitmq:
+        image: rabbitmq:4
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 12
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +39,14 @@ jobs:
           dotnet build 
           --configuration Release 
           -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        env:
+          RABBITMQ_TEST_REQUIRED: 'true'
+        run: >
+          dotnet test
+          --configuration Release
+          --no-build
 
       - name: Pack
         run: >

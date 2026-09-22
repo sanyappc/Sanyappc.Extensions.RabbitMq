@@ -27,8 +27,8 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
     [LoggerMessage(Level = LogLevel.Debug, Message = "Sending request to queue {Queue}, awaiting reply")]
     private static partial void LogRequest(ILogger logger, string queue);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RabbitMQ request to queue {Queue} timed out after {TimeoutSeconds} seconds")]
-    private static partial void LogRequestTimedOut(ILogger logger, string queue, int timeoutSeconds);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "RabbitMQ request to queue {Queue} timed out after {Timeout}")]
+    private static partial void LogRequestTimedOut(ILogger logger, string queue, TimeSpan timeout);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "RabbitMQ broker unavailable during request to queue {Queue}")]
     private static partial void LogRequestFailed(ILogger logger, string queue, Exception exception);
@@ -146,11 +146,11 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, serializedBody, cancellationToken)
                 .ConfigureAwait(false);
 
-            int replyTimeoutInSeconds = rabbitMqOptions.Value.ReplyTimeoutInSeconds;
-            if (replyTimeoutInSeconds != Timeout.Infinite)
+            TimeSpan replyTimeout = rabbitMqOptions.Value.ReplyTimeout;
+            if (replyTimeout != Timeout.InfiniteTimeSpan)
             {
                 using CancellationTokenSource timeoutCancellationTokenSource = new();
-                timeoutCancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(replyTimeoutInSeconds));
+                timeoutCancellationTokenSource.CancelAfter(replyTimeout);
 
                 using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken,
@@ -167,9 +167,9 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
                     if (cancellationToken.IsCancellationRequested)
                         throw;
 
-                    LogRequestTimedOut(logger, queue, replyTimeoutInSeconds);
+                    LogRequestTimedOut(logger, queue, replyTimeout);
                     throw new RabbitMqTimeoutException(
-                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeoutInSeconds} seconds.");
+                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeout}.");
                 }
             }
             else
@@ -266,11 +266,11 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
             await channel.BasicPublishAsync(string.Empty, queue, false, properties, serializedBody, cancellationToken)
                 .ConfigureAwait(false);
 
-            int replyTimeoutInSeconds = rabbitMqOptions.Value.ReplyTimeoutInSeconds;
-            if (replyTimeoutInSeconds != Timeout.Infinite)
+            TimeSpan replyTimeout = rabbitMqOptions.Value.ReplyTimeout;
+            if (replyTimeout != Timeout.InfiniteTimeSpan)
             {
                 using CancellationTokenSource timeoutCancellationTokenSource = new();
-                timeoutCancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(replyTimeoutInSeconds));
+                timeoutCancellationTokenSource.CancelAfter(replyTimeout);
 
                 using CancellationTokenSource linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken,
@@ -287,9 +287,9 @@ internal partial class RabbitMqPublishService(ILogger<RabbitMqPublishService> lo
                     if (cancellationToken.IsCancellationRequested)
                         throw;
 
-                    LogRequestTimedOut(logger, queue, replyTimeoutInSeconds);
+                    LogRequestTimedOut(logger, queue, replyTimeout);
                     throw new RabbitMqTimeoutException(
-                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeoutInSeconds} seconds.");
+                        $"The RabbitMQ request to queue '{queue}' timed out after {replyTimeout}.");
                 }
             }
             else
