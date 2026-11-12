@@ -28,7 +28,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.x'
+          dotnet-version: |
+            10.x
+            11.x
 
       - name: Extract version from tag
         id: version

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Authors>Alexander Mokrov</Authors>
@@ -22,12 +22,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Telemetry.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="$(RuntimeExtensionsVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(RuntimeExtensionsVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="$(RuntimeExtensionsVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="$(RuntimeExtensionsVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="$(RuntimeExtensionsVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Telemetry.Abstractions" Version="$(DotNetExtensionsVersion)" />
     <PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
   </ItemGroup>
 
@@ -35,14 +35,8 @@
     <ProjectReference Include="..\Sanyappc.Extensions.RabbitMq.Analyzers\Sanyappc.Extensions.RabbitMq.Analyzers.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_IncludeAnalyzerInPackage</TargetsForTfmSpecificContentInPackage>
-  </PropertyGroup>
-
-  <Target Name="_IncludeAnalyzerInPackage">
-    <ItemGroup>
-      <TfmSpecificPackageFile Include="..\Sanyappc.Extensions.RabbitMq.Analyzers\bin\$(Configuration)\netstandard2.0\Sanyappc.Extensions.RabbitMq.Analyzers.dll" PackagePath="analyzers/dotnet/cs" />
-    </ItemGroup>
-  </Target>
+  <ItemGroup>
+    <None Include="..\Sanyappc.Extensions.RabbitMq.Analyzers\bin\$(Configuration)\netstandard2.0\Sanyappc.Extensions.RabbitMq.Analyzers.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
 
 </Project>
